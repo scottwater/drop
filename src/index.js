@@ -1,4 +1,4 @@
-import { authenticateRequest, handleLogin, handleLogout, requireOwner } from './auth.js';
+import { authenticateRequest, handleLogin, handleLogout, requireOwner, validateAuthConfig } from './auth.js';
 import { inferContentType } from './content-type.js';
 import { companionHtmlPath, dirname, isMarkdownPath, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
 import { renderAdminPage, renderDirectoryPage, renderLoginPage } from './templates.js';
@@ -11,11 +11,15 @@ export default {
   },
 };
 
+const validatedEnvironments = new WeakSet();
+
 export async function handleRequest(request, env) {
   const url = new URL(request.url);
   const pathname = url.pathname;
 
   try {
+    ensureAuthConfiguration(env);
+
     if (pathname === '/__health') {
       return json({ ok: true, app: env.APP_NAME || 'Drop' });
     }
@@ -192,6 +196,19 @@ function objectResponse(object, key) {
     headers.set('etag', object.httpEtag);
   }
   return new Response(object.body, { headers });
+}
+
+function ensureAuthConfiguration(env) {
+  if (validatedEnvironments.has(env)) {
+    return;
+  }
+
+  const issues = validateAuthConfig(env);
+  if (issues.length) {
+    throw new Error(`Invalid auth configuration: ${issues.join('; ')}`);
+  }
+
+  validatedEnvironments.add(env);
 }
 
 function html(markup, status = 200) {

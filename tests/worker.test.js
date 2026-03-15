@@ -1,19 +1,28 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { resetLoginRateLimitState } from '../src/auth.js';
 import { handleRequest } from '../src/index.js';
 import { MockBucket } from './mock-bucket.js';
 
-function createEnv() {
+const CLI_TOKEN = 'cli-token-0123456789abcdef';
+const SESSION_SECRET = '0123456789abcdef0123456789abcdef';
+
+function createEnv(overrides = {}) {
   return {
     APP_NAME: 'Drop',
     OWNER_USERNAME: 'owner',
     OWNER_PASSWORD: 'secret',
-    SESSION_SECRET: 'session-secret',
-    CLI_TOKENS: 'cli-token',
+    SESSION_SECRET,
+    CLI_TOKENS: CLI_TOKEN,
     DROP_BUCKET: new MockBucket(),
+    ...overrides,
   };
 }
 
 describe('worker routes', () => {
+  beforeEach(() => {
+    resetLoginRateLimitState();
+  });
+
   it('protects admin APIs and serves login page', async () => {
     const env = createEnv();
     const loginResponse = await handleRequest(new Request('https://drop.test/login'), env);
@@ -59,7 +68,7 @@ describe('worker routes', () => {
 
   it('creates folders, uploads markdown, and serves companion html', async () => {
     const env = createEnv();
-    const authHeaders = { authorization: 'Bearer cli-token' };
+    const authHeaders = { authorization: `Bearer ${CLI_TOKEN}` };
 
     const mkdir = await handleRequest(new Request('https://drop.test/api/admin/folder', {
       method: 'POST',
@@ -104,7 +113,7 @@ describe('worker routes', () => {
     form.append('files', new File(['<h1>One</h1>'], 'index.html', { type: 'text/html' }));
     form.append('relativePaths', 'index.html');
 
-    const authHeaders = { authorization: 'Bearer cli-token' };
+    const authHeaders = { authorization: `Bearer ${CLI_TOKEN}` };
     const first = await handleRequest(new Request('https://drop.test/api/admin/upload', {
       method: 'POST',
       headers: authHeaders,
@@ -134,7 +143,7 @@ describe('worker routes', () => {
 
   it('hides all root contents from the public home page but keeps direct paths accessible', async () => {
     const env = createEnv();
-    const authHeaders = { authorization: 'Bearer cli-token' };
+    const authHeaders = { authorization: `Bearer ${CLI_TOKEN}` };
 
     const rootUpload = new FormData();
     rootUpload.append('files', new File(['<h1>Root File</h1>'], 'hello.html', { type: 'text/html' }));
@@ -177,7 +186,7 @@ describe('worker routes', () => {
 
   it('deletes files and folders from the admin api', async () => {
     const env = createEnv();
-    const authHeaders = { authorization: 'Bearer cli-token' };
+    const authHeaders = { authorization: `Bearer ${CLI_TOKEN}` };
 
     const fileForm = new FormData();
     fileForm.append('files', new File(['<h1>Temp</h1>'], 'temp.html', { type: 'text/html' }));
@@ -214,5 +223,58 @@ describe('worker routes', () => {
 
     expect((await handleRequest(new Request('https://drop.test/temp.html'), env)).status).toBe(404);
     expect((await handleRequest(new Request('https://drop.test/trash'), env)).status).toBe(404);
+  });
+
+  it('fails closed when auth configuration is missing or weak', async () => {
+    const missingSecret = await handleRequest(new Request('https://drop.test/login'), createEnv({ SESSION_SECRET: '' }));
+    expect(missingSecret.status).toBe(500);
+    expect(await missingSecret.text()).toContain('SESSION_SECRET is required');
+
+    const weakSecret = await handleRequest(new Request('https://drop.test/login'), createEnv({ SESSION_SECRET: 'too-short' }));
+    expect(weakSecret.status).toBe(500);
+    expect(await weakSecret.text()).toContain('SESSION_SECRET must be at least 32 characters');
+  });
+
+  it('treats malformed session cookies as unauthenticated instead of crashing', async () => {
+    const env = createEnv();
+
+    const response = await handleRequest(new Request('https://drop.test/admin', {
+      headers: { cookie: 'drop_session=%%%%.nope' },
+    }), env);
+
+    expect(response.status).toBe(302);
+    expect(response.headers.get('location')).toBe('/login?redirect=%2Fadmin');
+  });
+
+  it('rate limits repeated failed login attempts', async () => {
+    const env = createEnv({
+      LOGIN_RATE_LIMIT_MAX_ATTEMPTS: '3',
+      LOGIN_RATE_LIMIT_WINDOW_SECONDS: '60',
+      LOGIN_RATE_LIMIT_BLOCK_SECONDS: '120',
+    });
+
+    async function attempt(password) {
+      const form = new FormData();
+      form.set('username', 'owner');
+      form.set('password', password);
+      form.set('redirect', '/admin');
+
+      return handleRequest(new Request('https://drop.test/login', {
+        method: 'POST',
+        headers: { 'cf-connecting-ip': '203.0.113.10' },
+        body: form,
+      }), env);
+    }
+
+    expect((await attempt('wrong-1')).status).toBe(401);
+    expect((await attempt('wrong-2')).status).toBe(401);
+
+    const blocked = await attempt('wrong-3');
+    expect(blocked.status).toBe(429);
+    expect(blocked.headers.get('retry-after')).toBe('120');
+    expect(await blocked.text()).toContain('Too many sign-in attempts');
+
+    const stillBlocked = await attempt('secret');
+    expect(stillBlocked.status).toBe(429);
   });
 });

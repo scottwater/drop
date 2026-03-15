@@ -2,6 +2,66 @@ import { renderLoginPage } from './templates.js';
 
 const SESSION_COOKIE = 'drop_session';
 const SESSION_TTL_SECONDS = 60 * 60 * 24 * 14;
+const MIN_SESSION_SECRET_LENGTH = 32;
+const DEFAULT_LOGIN_RATE_LIMIT = {
+  maxAttempts: 5,
+  windowSeconds: 60 * 15,
+  blockSeconds: 60 * 15,
+};
+const WEAK_SESSION_SECRETS = new Set([
+  'changeme',
+  'change-me',
+  'default',
+  'development',
+  'drop',
+  'password',
+  'secret',
+  'session-secret',
+  'test',
+]);
+const loginAttemptState = new Map();
+
+export function validateAuthConfig(env) {
+  const issues = [];
+
+  if (!String(env.OWNER_USERNAME || '').trim()) {
+    issues.push('OWNER_USERNAME is required');
+  }
+
+  if (!String(env.OWNER_PASSWORD || '').trim()) {
+    issues.push('OWNER_PASSWORD is required');
+  }
+
+  if (!String(env.SESSION_SECRET || '').trim()) {
+    issues.push('SESSION_SECRET is required');
+  } else if (!isStrongSessionSecret(String(env.SESSION_SECRET))) {
+    issues.push(`SESSION_SECRET must be at least ${MIN_SESSION_SECRET_LENGTH} characters and not a placeholder value`);
+  }
+
+  if (!getCliTokens(env).length) {
+    issues.push('CLI_TOKENS must contain at least one bearer token');
+  }
+
+  const rateLimitEnvKeys = [
+    'LOGIN_RATE_LIMIT_MAX_ATTEMPTS',
+    'LOGIN_RATE_LIMIT_WINDOW_SECONDS',
+    'LOGIN_RATE_LIMIT_BLOCK_SECONDS',
+  ];
+
+  for (const key of rateLimitEnvKeys) {
+    const value = env[key];
+    if (value === undefined || value === null || value === '') continue;
+    if (parsePositiveInteger(value) === null) {
+      issues.push(`${key} must be a positive integer`);
+    }
+  }
+
+  return issues;
+}
+
+export function resetLoginRateLimitState() {
+  loginAttemptState.clear();
+}
 
 export async function authenticateRequest(request, env) {
   const authHeader = request.headers.get('authorization');
@@ -16,7 +76,7 @@ export async function authenticateRequest(request, env) {
   const session = cookies[SESSION_COOKIE];
   if (!session) return { ok: false };
 
-  const payload = await verifySignedValue(session, env.SESSION_SECRET || '');
+  const payload = await verifySignedValue(session, String(env.SESSION_SECRET || ''));
   if (!payload) return { ok: false };
 
   try {
@@ -44,16 +104,28 @@ export async function handleLogin(request, env) {
   const redirectTo = sanitizeRedirect(String(form.get('redirect') || '/admin'));
   const secure = shouldUseSecureCookies(request);
 
+  const activeBlock = getActiveLoginBlock(request, env);
+  if (activeBlock.blocked) {
+    return loginRateLimitedResponse(redirectTo, activeBlock.retryAfterSeconds);
+  }
+
   if (username !== env.OWNER_USERNAME || password !== env.OWNER_PASSWORD) {
+    const failure = recordFailedLoginAttempt(request, env);
+    if (failure.blocked) {
+      return loginRateLimitedResponse(redirectTo, failure.retryAfterSeconds);
+    }
+
     return new Response(renderLoginPage({ error: 'Invalid credentials', redirect: redirectTo }), {
       status: 401,
       headers: { 'content-type': 'text/html; charset=utf-8' },
     });
   }
 
+  clearLoginAttempts(request);
+
   const expires = Date.now() + SESSION_TTL_SECONDS * 1000;
   const payload = JSON.stringify({ u: username, exp: expires });
-  const signed = await signValue(payload, env.SESSION_SECRET || '');
+  const signed = await signValue(payload, String(env.SESSION_SECRET || ''));
   const headers = new Headers({ location: redirectTo });
   headers.append('set-cookie', serializeCookie(SESSION_COOKIE, signed, {
     httpOnly: true,
@@ -121,13 +193,17 @@ async function signValue(value, secret) {
 }
 
 async function verifySignedValue(input, secret) {
-  const index = input.lastIndexOf('.');
-  if (index === -1) return null;
-  const encoded = input.slice(0, index);
-  const provided = input.slice(index + 1);
-  const value = base64UrlDecode(encoded);
-  const expected = await signText(value, secret);
-  return timingSafeEqual(provided, expected) ? value : null;
+  try {
+    const index = input.lastIndexOf('.');
+    if (index === -1) return null;
+    const encoded = input.slice(0, index);
+    const provided = input.slice(index + 1);
+    const value = base64UrlDecode(encoded);
+    const expected = await signText(value, secret);
+    return timingSafeEqual(provided, expected) ? value : null;
+  } catch {
+    return null;
+  }
 }
 
 async function signText(value, secret) {
@@ -174,4 +250,123 @@ function shouldUseSecureCookies(request) {
   } catch {
     return true;
   }
+}
+
+function isStrongSessionSecret(secret) {
+  const normalized = String(secret || '').trim();
+  if (normalized.length < MIN_SESSION_SECRET_LENGTH) return false;
+  if (/^(.)\1+$/.test(normalized)) return false;
+  if (WEAK_SESSION_SECRETS.has(normalized.toLowerCase())) return false;
+  return true;
+}
+
+function getLoginRateLimitConfig(env) {
+  return {
+    maxAttempts: parsePositiveInteger(env.LOGIN_RATE_LIMIT_MAX_ATTEMPTS) ?? DEFAULT_LOGIN_RATE_LIMIT.maxAttempts,
+    windowSeconds: parsePositiveInteger(env.LOGIN_RATE_LIMIT_WINDOW_SECONDS) ?? DEFAULT_LOGIN_RATE_LIMIT.windowSeconds,
+    blockSeconds: parsePositiveInteger(env.LOGIN_RATE_LIMIT_BLOCK_SECONDS) ?? DEFAULT_LOGIN_RATE_LIMIT.blockSeconds,
+  };
+}
+
+function getActiveLoginBlock(request, env, now = Date.now()) {
+  const key = getLoginAttemptKey(request);
+  cleanupLoginAttemptState(now);
+  const entry = loginAttemptState.get(key);
+  if (!entry) return { blocked: false };
+  if (entry.blockedUntil > now) {
+    return {
+      blocked: true,
+      retryAfterSeconds: Math.max(1, Math.ceil((entry.blockedUntil - now) / 1000)),
+    };
+  }
+  const config = getLoginRateLimitConfig(env);
+  if (entry.windowStartedAt + (config.windowSeconds * 1000) <= now) {
+    loginAttemptState.delete(key);
+  }
+  return { blocked: false };
+}
+
+function recordFailedLoginAttempt(request, env, now = Date.now()) {
+  const key = getLoginAttemptKey(request);
+  const config = getLoginRateLimitConfig(env);
+  const windowMs = config.windowSeconds * 1000;
+  const blockMs = config.blockSeconds * 1000;
+  let entry = loginAttemptState.get(key);
+
+  if (!entry || entry.windowStartedAt + windowMs <= now || (entry.blockedUntil > 0 && entry.blockedUntil <= now)) {
+    entry = {
+      count: 0,
+      windowStartedAt: now,
+      blockedUntil: 0,
+      lastSeenAt: now,
+    };
+  }
+
+  entry.count += 1;
+  entry.lastSeenAt = now;
+
+  if (entry.count >= config.maxAttempts) {
+    entry.blockedUntil = now + blockMs;
+    loginAttemptState.set(key, entry);
+    cleanupLoginAttemptState(now);
+    return {
+      blocked: true,
+      retryAfterSeconds: Math.max(1, Math.ceil(blockMs / 1000)),
+    };
+  }
+
+  loginAttemptState.set(key, entry);
+  cleanupLoginAttemptState(now);
+  return { blocked: false };
+}
+
+function clearLoginAttempts(request) {
+  loginAttemptState.delete(getLoginAttemptKey(request));
+}
+
+function getLoginAttemptKey(request) {
+  const forwarded = request.headers.get('cf-connecting-ip')
+    || request.headers.get('x-forwarded-for')
+    || 'unknown';
+  const ip = forwarded.split(',')[0].trim() || 'unknown';
+  return `ip:${ip}`;
+}
+
+function cleanupLoginAttemptState(now = Date.now()) {
+  if (!loginAttemptState.size) return;
+
+  for (const [key, entry] of loginAttemptState.entries()) {
+    if (entry.blockedUntil > now) continue;
+    if (entry.lastSeenAt + (DEFAULT_LOGIN_RATE_LIMIT.blockSeconds * 1000 * 2) > now) continue;
+    loginAttemptState.delete(key);
+  }
+}
+
+function loginRateLimitedResponse(redirectTo, retryAfterSeconds) {
+  return new Response(renderLoginPage({
+    error: `Too many sign-in attempts. Try again in ${formatRetryAfter(retryAfterSeconds)}.`,
+    redirect: redirectTo,
+  }), {
+    status: 429,
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'retry-after': String(retryAfterSeconds),
+    },
+  });
+}
+
+function formatRetryAfter(retryAfterSeconds) {
+  if (retryAfterSeconds < 60) {
+    return `${retryAfterSeconds}s`;
+  }
+
+  const minutes = Math.ceil(retryAfterSeconds / 60);
+  return `${minutes}m`;
+}
+
+function parsePositiveInteger(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number.parseInt(String(value), 10);
+  if (!Number.isInteger(parsed) || parsed <= 0) return null;
+  return parsed;
 }

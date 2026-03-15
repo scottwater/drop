@@ -3,21 +3,23 @@ main = "src/index.js"
 compatibility_date = "2026-03-15"
 workers_dev = true
 
-# To use a custom domain/subdomain, uncomment and replace with your own zone:
-routes = [
-  { pattern = "drops.scottw.com/*", zone_name = "scottw.com" }
-]
+# Routes and R2 bucket names are intentionally not hardcoded here.
+# Use `npm run dev` or `npm run deploy` with these shell env vars to inject them:
+# - DROP_BUCKET_NAME
+# - DROP_PREVIEW_BUCKET_NAME
+# - DROP_ROUTE_PATTERN      (optional, but must be paired with DROP_ROUTE_ZONE_NAME)
+# - DROP_ROUTE_ZONE_NAME    (optional, but must be paired with DROP_ROUTE_PATTERN)
 
 [vars]
 APP_NAME = "Drop"
 
-[[r2_buckets]]
-binding = "DROP_BUCKET"
-bucket_name = "drop"
-preview_bucket_name = "drop"
-
 # Secrets to set with `wrangler secret put`:
 # - OWNER_USERNAME
 # - OWNER_PASSWORD
-# - SESSION_SECRET
-# - CLI_TOKENS   (comma-separated bearer tokens)
+# - SESSION_SECRET   (long random value; weak values shorter than 32 chars are rejected) use: `openssl rand -base64 32`
+# - CLI_TOKENS       (comma-separated bearer tokens)
+#
+# Optional vars:
+# - LOGIN_RATE_LIMIT_MAX_ATTEMPTS   (default 5)
+# - LOGIN_RATE_LIMIT_WINDOW_SECONDS (default 900)
+# - LOGIN_RATE_LIMIT_BLOCK_SECONDS  (default 900)

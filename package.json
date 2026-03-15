@@ -7,8 +7,10 @@
     "drop": "./src/cli.js"
   },
   "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
+    "dev": "node ./scripts/deploy.mjs dev",
+    "dev:raw": "wrangler dev",
+    "deploy": "node ./scripts/deploy.mjs deploy",
+    "deploy:raw": "wrangler deploy",
     "test": "vitest run",
     "test:watch": "vitest",
     "cli": "node ./src/cli.js"
