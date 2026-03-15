@@ -1,0 +1,23 @@
+{
+  "name": "drop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "drop": "./src/cli.js"
+  },
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "cli": "node ./src/cli.js"
+  },
+  "dependencies": {
+    "marked": "^16.4.1"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "wrangler": "^4.73.0"
+  }
+}

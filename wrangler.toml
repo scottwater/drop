@@ -1,0 +1,23 @@
+name = "drop"
+main = "src/index.js"
+compatibility_date = "2026-03-15"
+workers_dev = true
+
+# To use a custom domain/subdomain, uncomment and replace with your own zone:
+# routes = [
+#   { pattern = "drop.example.com/*", zone_name = "example.com" }
+# ]
+
+[vars]
+APP_NAME = "Drop"
+
+[[r2_buckets]]
+binding = "DROP_BUCKET"
+bucket_name = "drop"
+preview_bucket_name = "drop"
+
+# Secrets to set with `wrangler secret put`:
+# - OWNER_USERNAME
+# - OWNER_PASSWORD
+# - SESSION_SECRET
+# - CLI_TOKENS   (comma-separated bearer tokens)
