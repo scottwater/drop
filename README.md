@@ -10,6 +10,8 @@ Drop is a Cloudflare-first personal publishing utility for uploading files and f
 - Markdown uploads generate companion `.html` files while preserving the original `.md`
 - Instant web uploads via drag/drop or chooser buttons
 - CLI for upload, list, search, folder creation, and deletion
+
+See [CLI.md](./CLI.md) for local CLI installation, authentication, and command usage.
 - R2-backed storage with overwrite protection
 
 ## Required Cloudflare setup
