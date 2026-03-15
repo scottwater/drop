@@ -52,6 +52,14 @@ export class MockBucket {
     };
   }
 
+  async delete(keys) {
+    if (Array.isArray(keys)) {
+      keys.forEach((key) => this.objects.delete(key));
+      return;
+    }
+    this.objects.delete(keys);
+  }
+
   async list({ prefix = '', delimiter, limit = 1000 } = {}) {
     const all = [...this.objects.values()]
       .filter((object) => object.key.startsWith(prefix))

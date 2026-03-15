@@ -112,6 +112,20 @@ function shell({ title, body, script = '' }) {
         color: var(--text);
         border: 1px solid var(--line-strong);
       }
+      button.danger, .button.danger {
+        background: transparent;
+        color: var(--danger);
+        border: 1px solid rgba(255, 143, 120, 0.35);
+      }
+      button.ghost, .button.ghost {
+        background: rgba(255,255,255,0.03);
+        color: var(--text);
+        border: 1px dashed var(--line-strong);
+      }
+      button.mini, .button.mini {
+        padding: 9px 12px;
+        font-size: 0.8rem;
+      }
       .actions { display: flex; flex-wrap: wrap; gap: 10px; }
       .pill {
         display: inline-flex;
@@ -140,6 +154,12 @@ function shell({ title, body, script = '' }) {
       .row:hover { border-color: var(--line-strong); transform: translateY(-1px); }
       .row-title { font-weight: 700; }
       .row-subtitle { color: var(--muted); font-size: 0.88rem; margin-top: 4px; }
+      .row-actions {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        justify-content: flex-end;
+      }
       .muted { color: var(--muted); }
       .status {
         min-height: 22px;
@@ -154,10 +174,35 @@ function shell({ title, body, script = '' }) {
         padding: 18px;
         background: linear-gradient(180deg, rgba(240,179,93,0.08), rgba(255,255,255,0.02));
       }
+      .dropzone.active {
+        border-color: rgba(255, 203, 123, 0.95);
+        background: linear-gradient(180deg, rgba(240,179,93,0.16), rgba(255,255,255,0.04));
+      }
       .split {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 12px;
+      }
+      .hidden-input {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+      .upload-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+      }
+      .upload-note {
+        color: var(--muted);
+        font-size: 0.92rem;
       }
       .tiny { font-size: 0.82rem; color: var(--muted); }
       .toolbar {
@@ -235,19 +280,27 @@ export function renderAdminPage() {
       <section class="hero">
         <div class="card">
           <div class="eyebrow">Drop · owner console</div>
-          <h1>Ship files fast, keep the surface calm.</h1>
-          <p class="lede">Browse everything, search by path, make folders before you need them, and upload files or whole directories without exposing a public index. Markdown keeps its raw <code>.md</code> file and gains a polished <code>.html</code> companion.</p>
+          <h1>Drop fast. Keep it quiet.</h1>
+          <p class="lede">Upload is the main event: drag files or folders straight onto the panel, or choose them with a button and let the upload start immediately. Then browse, search, move through folders, and manage what is already live.</p>
         </div>
-        <div class="card stack">
+        <section class="card stack dropzone" id="dropzone">
           <div>
-            <div class="eyebrow">Session</div>
-            <div class="pill">Owner session active</div>
+            <div class="eyebrow">Upload</div>
+            <p class="lede" style="margin: 0 0 14px; font-size: 1rem;">Drop files or folders here to upload immediately.</p>
           </div>
-          <div class="actions">
-            <a class="button secondary" href="/" target="_blank" rel="noreferrer">Open public root</a>
-            <form method="post" action="/logout"><button class="secondary" type="submit">Log out</button></form>
+          <div>
+            <label for="upload-output">Output path (optional)</label>
+            <input id="upload-output" type="text" placeholder="notes/readme or projects/site/" />
+            <p class="tiny">If the destination ends with <code>/</code> or has no extension, single-file uploads resolve to <code>index.*</code> using the source file extension. Markdown still generates a companion <code>index.html</code>.</p>
           </div>
-        </div>
+          <div class="upload-actions">
+            <button id="pick-files" class="secondary" type="button">Choose files</button>
+            <button id="pick-folder" class="ghost" type="button">Choose folder</button>
+            <span class="upload-note">Selection starts uploading as soon as you choose or drop it.</span>
+          </div>
+          <input id="upload-files" class="hidden-input" type="file" multiple />
+          <input id="upload-folder" class="hidden-input" type="file" webkitdirectory directory multiple />
+        </section>
       </section>
 
       <section class="grid">
@@ -273,28 +326,14 @@ export function renderAdminPage() {
             </div>
           </section>
 
-          <section class="card stack dropzone" id="dropzone">
+          <section class="card stack">
             <div>
-              <div class="eyebrow">Upload</div>
-              <p class="lede" style="margin: 0 0 14px; font-size: 1rem;">Drop files here, or use the pickers below for individual files or directories.</p>
-            </div>
-            <div>
-              <label for="upload-output">Output path (optional)</label>
-              <input id="upload-output" type="text" placeholder="notes/readme or projects/site/" />
-              <p class="tiny">If the destination ends with <code>/</code> or has no extension, single-file uploads resolve to <code>index.*</code> using the source file extension. Markdown still generates a companion <code>index.html</code>.</p>
-            </div>
-            <div class="split">
-              <div>
-                <label for="upload-files">Files</label>
-                <input id="upload-files" type="file" multiple />
-              </div>
-              <div>
-                <label for="upload-folder">Directory</label>
-                <input id="upload-folder" type="file" webkitdirectory directory multiple />
-              </div>
+              <div class="eyebrow">Session</div>
+              <div class="pill">Owner session active</div>
             </div>
             <div class="actions">
-              <button id="upload-selected" type="button">Upload selection</button>
+              <a class="button secondary" href="/" target="_blank" rel="noreferrer">Open public home</a>
+              <form method="post" action="/logout"><button class="secondary" type="submit">Log out</button></form>
             </div>
           </section>
         </aside>
@@ -321,9 +360,10 @@ export function renderAdminPage() {
 
 export function renderDirectoryPage({ path = '', folders = [], files = [], isRoot = false }) {
   const crumbs = breadcrumbHtml(path, false);
+  const visibleFiles = isRoot ? [] : files;
   const rows = [
     ...folders.map((folder) => `<a class="row" href="${escapeHtml(folder.href)}"><div><div class="row-title">${escapeHtml(folder.name)}/</div><div class="row-subtitle">Folder</div></div><div class="pill">Browse</div><div class="muted">—</div></a>`),
-    ...files.map((file) => `<a class="row" href="${escapeHtml(file.href)}"><div><div class="row-title">${escapeHtml(file.name)}</div><div class="row-subtitle">${escapeHtml(file.contentType || 'file')}</div></div><div class="pill">${escapeHtml(humanFileSize(file.size || 0))}</div><div class="muted">${file.uploaded ? escapeHtml(new Date(file.uploaded).toLocaleString()) : 'Unknown'}</div></a>`),
+    ...visibleFiles.map((file) => `<a class="row" href="${escapeHtml(file.href)}"><div><div class="row-title">${escapeHtml(file.name)}</div><div class="row-subtitle">${escapeHtml(file.contentType || 'file')}</div></div><div class="pill">${escapeHtml(humanFileSize(file.size || 0))}</div><div class="muted">${file.uploaded ? escapeHtml(new Date(file.uploaded).toLocaleString()) : 'Unknown'}</div></a>`),
   ].join('');
 
   return shell({
@@ -331,24 +371,21 @@ export function renderDirectoryPage({ path = '', folders = [], files = [], isRoo
     body: `<main class="page">
       <section class="hero">
         <div class="card">
-          <div class="eyebrow">Drop · directory</div>
-          <h1>${isRoot ? 'Shared root' : escapeHtml(path)}</h1>
-          <p class="lede">This space is reachable because you know the path. It is not globally listed for anonymous visitors.</p>
-        </div>
-        <div class="card stack">
-          <div class="eyebrow">Location</div>
-          <div class="breadcrumbs">${crumbs}</div>
+          <div class="eyebrow">Drop</div>
+          <h1>${isRoot ? 'Drop' : escapeHtml(path)}</h1>
+          <p class="lede">${isRoot ? 'This is the quiet front door. Nothing is listed here unless you already know the path you want.' : 'This space is reachable because you know the path. It is not globally listed for anonymous visitors.'}</p>
+          ${isRoot ? '' : `<div class="breadcrumbs" style="margin-top: 18px;">${crumbs}</div>`}
         </div>
       </section>
-      <section class="card">
+      ${isRoot ? '' : `<section class="card">
         <div class="toolbar">
           <div>
             <div class="eyebrow">Contents</div>
-            <div class="muted">${folders.length} folders · ${files.length} files</div>
+            <div class="muted">${folders.length} folders · ${visibleFiles.length} files</div>
           </div>
         </div>
         <div class="table">${rows || '<div class="empty">Nothing is stored here yet.</div>'}</div>
-      </section>
+      </section>`}
     </main>`,
   });
 }
@@ -366,7 +403,7 @@ function breadcrumbHtml(path, admin = true) {
 
 function adminScript() {
   return `
-const state = { currentPath: '', selectedFiles: [] };
+const state = { currentPath: '', selectedFiles: [], isUploading: false };
 const listingEl = document.getElementById('listing');
 const statusEl = document.getElementById('status');
 const breadcrumbsEl = document.getElementById('breadcrumbs');
@@ -376,6 +413,8 @@ const fileInput = document.getElementById('upload-files');
 const folderInput = document.getElementById('upload-folder');
 const outputInput = document.getElementById('upload-output');
 const dropzone = document.getElementById('dropzone');
+const pickFilesButton = document.getElementById('pick-files');
+const pickFolderButton = document.getElementById('pick-folder');
 
 function setStatus(message = '', kind = '') {
   statusEl.textContent = message;
@@ -423,10 +462,10 @@ async function loadListing(path = '') {
   breadcrumbsEl.innerHTML = breadcrumbs(data.path || '');
   const rows = [];
   for (const folder of data.folders) {
-    rows.push('<button class="row" data-open-folder="' + escapeHtml(folder.path) + '"><div><div class="row-title">' + escapeHtml(folder.name) + '/</div><div class="row-subtitle">Folder</div></div><div class="pill">Browse</div><div class="muted">—</div></button>');
+    rows.push('<div class="row"><div><div class="row-title">' + escapeHtml(folder.name) + '/</div><div class="row-subtitle">Folder</div></div><div class="pill">Browse</div><div class="row-actions"><button class="secondary mini" type="button" data-open-folder="' + escapeHtml(folder.path) + '">Open</button><button class="danger mini" type="button" data-delete-folder="' + escapeHtml(folder.path) + '">Delete</button></div></div>');
   }
   for (const file of data.files) {
-    rows.push('<a class="row" href="' + escapeHtml(file.href) + '" target="_blank" rel="noreferrer"><div><div class="row-title">' + escapeHtml(file.name) + '</div><div class="row-subtitle">' + escapeHtml(file.contentType || 'file') + '</div></div><div class="pill">' + formatSize(file.size || 0) + '</div><div class="muted">Open</div></a>');
+    rows.push('<div class="row"><div><div class="row-title">' + escapeHtml(file.name) + '</div><div class="row-subtitle">' + escapeHtml(file.contentType || 'file') + '</div></div><div class="pill">' + formatSize(file.size || 0) + '</div><div class="row-actions"><a class="button secondary mini" href="' + escapeHtml(file.href) + '" target="_blank" rel="noreferrer">Open</a><button class="danger mini" type="button" data-delete-file="' + escapeHtml(file.path) + '">Delete</button></div></div>');
   }
   listingEl.innerHTML = rows.join('') || '<div class="empty">Nothing is stored here yet.</div>';
   setStatus('Showing ' + (data.path || 'root'), 'ok');
@@ -459,6 +498,8 @@ async function upload(force = false) {
     setStatus('Choose at least one file or directory before uploading.', 'error');
     return;
   }
+  if (state.isUploading) return;
+  state.isUploading = true;
   const form = new FormData();
   form.set('output', outputInput.value.trim());
   form.set('force', force ? 'true' : 'false');
@@ -471,6 +512,7 @@ async function upload(force = false) {
   const response = await fetch('/api/admin/upload', { method: 'POST', body: form });
   if (response.status === 409) {
     const data = await response.json();
+    state.isUploading = false;
     if (confirm('These paths already exist:\\n\\n' + data.conflicts.join('\\n') + '\\n\\nOverwrite them?')) {
       return upload(true);
     }
@@ -479,13 +521,16 @@ async function upload(force = false) {
   }
   if (!response.ok) {
     const data = await response.json().catch(() => ({ error: 'Upload failed' }));
+    state.isUploading = false;
     setStatus(data.error || 'Upload failed.', 'error');
     return;
   }
   const data = await response.json();
+  state.isUploading = false;
   setStatus('Uploaded ' + data.saved.length + ' object(s).', 'ok');
   fileInput.value = '';
   folderInput.value = '';
+  state.selectedFiles = [];
   await loadListing(data.refreshPath || state.currentPath);
 }
 
@@ -511,16 +556,47 @@ async function createFolder() {
   await loadListing(state.currentPath);
 }
 
+async function deletePath(path, type) {
+  const noun = type === 'folder' ? 'folder and everything inside it' : 'file';
+  if (!confirm('Delete this ' + noun + '?\\n\\n' + path)) return;
+  const response = await fetch('/api/admin/delete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ path, type })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    setStatus(data.error || 'Delete failed.', 'error');
+    return;
+  }
+  setStatus('Deleted ' + type + ': ' + path, 'ok');
+  await loadListing(state.currentPath);
+}
+
+pickFilesButton.addEventListener('click', () => fileInput.click());
+pickFolderButton.addEventListener('click', () => folderInput.click());
 document.getElementById('refresh-list').addEventListener('click', () => loadListing(state.currentPath));
 document.getElementById('go-root').addEventListener('click', () => loadListing(''));
 document.getElementById('create-folder').addEventListener('click', createFolder);
-document.getElementById('upload-selected').addEventListener('click', () => upload(false));
 searchInput.addEventListener('input', (event) => runSearch(event.target.value));
 listingEl.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-open-folder]');
-  if (!button) return;
-  event.preventDefault();
-  loadListing(button.getAttribute('data-open-folder'));
+  const openFolder = event.target.closest('[data-open-folder]');
+  if (openFolder) {
+    event.preventDefault();
+    loadListing(openFolder.getAttribute('data-open-folder'));
+    return;
+  }
+  const deleteFile = event.target.closest('[data-delete-file]');
+  if (deleteFile) {
+    event.preventDefault();
+    deletePath(deleteFile.getAttribute('data-delete-file'), 'file');
+    return;
+  }
+  const deleteFolder = event.target.closest('[data-delete-folder]');
+  if (deleteFolder) {
+    event.preventDefault();
+    deletePath(deleteFolder.getAttribute('data-delete-folder'), 'folder');
+  }
 });
 searchResults.addEventListener('click', (event) => {
   const link = event.target.closest('[data-open-path]');
@@ -538,31 +614,34 @@ breadcrumbsEl.addEventListener('click', (event) => {
 });
 ['dragenter', 'dragover'].forEach((name) => dropzone.addEventListener(name, (event) => {
   event.preventDefault();
-  dropzone.style.borderColor = 'rgba(255, 203, 123, 0.95)';
+  dropzone.classList.add('active');
 }));
 ['dragleave', 'drop'].forEach((name) => dropzone.addEventListener(name, (event) => {
   event.preventDefault();
-  dropzone.style.borderColor = 'rgba(240,179,93,0.4)';
+  dropzone.classList.remove('active');
 }));
-dropzone.addEventListener('drop', (event) => {
+dropzone.addEventListener('drop', async (event) => {
   const files = Array.from(event.dataTransfer.files || []);
   if (!files.length) return;
   const transfer = new DataTransfer();
   files.forEach((file) => transfer.items.add(file));
   fileInput.files = transfer.files;
   folderInput.value = '';
-  setStatus(files.length + ' file(s) staged. Ready to upload.', 'ok');
+  setStatus(files.length + ' file(s) dropped. Uploading now…', 'ok');
+  await upload(false);
 });
-fileInput.addEventListener('change', () => {
+fileInput.addEventListener('change', async () => {
   if (fileInput.files?.length) {
     folderInput.value = '';
-    setStatus(fileInput.files.length + ' file(s) selected.', 'ok');
+    setStatus(fileInput.files.length + ' file(s) selected. Uploading now…', 'ok');
+    await upload(false);
   }
 });
-folderInput.addEventListener('change', () => {
+folderInput.addEventListener('change', async () => {
   if (folderInput.files?.length) {
     fileInput.value = '';
-    setStatus(folderInput.files.length + ' file(s) from directory selected.', 'ok');
+    setStatus(folderInput.files.length + ' file(s) from folder selected. Uploading now…', 'ok');
+    await upload(false);
   }
 });
 loadListing('');

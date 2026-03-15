@@ -2,7 +2,7 @@ import { authenticateRequest, handleLogin, handleLogout, requireOwner } from './
 import { inferContentType } from './content-type.js';
 import { companionHtmlPath, dirname, isMarkdownPath, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
 import { renderAdminPage, renderDirectoryPage, renderLoginPage } from './templates.js';
-import { createFolder, collectConflicts, getObject, listDirectory, maybeGetFolderIndex, putObject, searchPaths } from './storage.js';
+import { createFolder, collectConflicts, deletePath, getObject, listDirectory, maybeGetFolderIndex, putObject, searchPaths } from './storage.js';
 import { renderMarkdownDocument } from './markdown.js';
 
 export default {
@@ -73,6 +73,15 @@ export async function handleRequest(request, env) {
     if (pathname === '/api/admin/upload' && request.method === 'POST') {
       await requireOwner(request, env);
       return handleUpload(request, env);
+    }
+
+    if (pathname === '/api/admin/delete' && request.method === 'POST') {
+      await requireOwner(request, env);
+      const body = await request.json();
+      const path = normalizePath(body.path, { allowEmpty: false });
+      const type = body.type === 'folder' ? 'folder' : 'file';
+      const result = await deletePath(env.DROP_BUCKET, path, type);
+      return json({ ok: true, path, type, deleted: result.deleted });
     }
 
     return servePublicPath(request, env);
@@ -162,8 +171,8 @@ async function servePublicPath(request, env) {
   if (listing.hasEntries || requestedPath === '') {
     return html(renderDirectoryPage({
       path: requestedPath,
-      folders: listing.folders,
-      files: listing.files,
+      folders: requestedPath === '' ? [] : listing.folders,
+      files: requestedPath === '' ? [] : listing.files,
       isRoot: requestedPath === '',
     }));
   }

@@ -31,6 +31,10 @@ async function main(argv) {
     case 'mkdir':
       await handleMkdir(args);
       return;
+    case 'rm':
+    case 'delete':
+      await handleDelete(args);
+      return;
     default:
       throw new Error(`Unknown command: ${command}`);
   }
@@ -139,6 +143,26 @@ async function handleMkdir(args) {
   console.log(`Created folder: ${data.path}`);
 }
 
+async function handleDelete(args) {
+  const targetPath = args.positionals[0];
+  if (!targetPath) throw new Error('Usage: drop rm <path> [--folder]');
+  const auth = await getAuth(args.flags);
+  const type = args.flags.folder ? 'folder' : 'file';
+  const response = await fetch(`${auth.host}/api/admin/delete`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${auth.token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ path: targetPath, type }),
+  });
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data.error || `delete failed with status ${response.status}`);
+  }
+  console.log(`Deleted ${type}: ${data.path}`);
+}
+
 async function getAuth(flags) {
   const config = await readConfig();
   const host = (flags.host || process.env.DROP_HOST || config.host || '').replace(/\/$/, '');
@@ -225,6 +249,7 @@ Commands:
   drop ls [prefix]
   drop search <query>
   drop mkdir <path>
+  drop rm <path> [--folder]
 
 Flags for all commands:
   --host <url>   Override configured host

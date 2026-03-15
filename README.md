@@ -8,7 +8,8 @@ Drop is a Cloudflare-first personal publishing utility for uploading files and f
 - Public-by-link file and folder serving
 - Styled directory listings
 - Markdown uploads generate companion `.html` files while preserving the original `.md`
-- CLI for upload, list, search, and folder creation
+- Instant web uploads via drag/drop or chooser buttons
+- CLI for upload, list, search, folder creation, and deletion
 - R2-backed storage with overwrite protection
 
 ## Required Cloudflare setup
@@ -38,6 +39,8 @@ drop upload ./docs/readme.md --output notes/readme
 drop ls notes/
 drop search readme
 drop mkdir drafts/ideas/
+drop rm drafts/ideas/index.html
+drop rm drafts/ideas --folder
 ```
 
 If `--output` ends with `/` or has no extension, Drop treats it as a folder target and writes `index.*` using the source file extension. Markdown uploads still produce a companion `index.html`.

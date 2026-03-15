@@ -48,7 +48,9 @@ describe('worker routes', () => {
     expect(admin.status).toBe(200);
     const html = await admin.text();
     expect(html).toContain('owner console');
-    expect(html).toContain('Upload selection');
+    expect(html).toContain('Choose files');
+    expect(html).toContain('Choose folder');
+    expect(html).toContain('Delete');
 
     const scriptMatch = html.match(/<script type="module">([\s\S]*)<\/script>/);
     expect(scriptMatch?.[1]).toBeTruthy();
@@ -128,5 +130,89 @@ describe('worker routes', () => {
     const publicView = await handleRequest(new Request('https://drop.test/site'), env);
     expect(publicView.status).toBe(200);
     expect(await publicView.text()).toContain('<h1>One</h1>');
+  });
+
+  it('hides all root contents from the public home page but keeps direct paths accessible', async () => {
+    const env = createEnv();
+    const authHeaders = { authorization: 'Bearer cli-token' };
+
+    const rootUpload = new FormData();
+    rootUpload.append('files', new File(['<h1>Root File</h1>'], 'hello.html', { type: 'text/html' }));
+    rootUpload.append('relativePaths', 'hello.html');
+
+    const folderUpload = new FormData();
+    folderUpload.append('files', new File(['inside folder'], 'readme.txt', { type: 'text/plain' }));
+    folderUpload.append('relativePaths', 'readme.txt');
+    folderUpload.set('output', 'notes');
+
+    await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: authHeaders,
+      body: rootUpload,
+    }), env);
+
+    await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: authHeaders,
+      body: folderUpload,
+    }), env);
+
+    const home = await handleRequest(new Request('https://drop.test/'), env);
+    const html = await home.text();
+    expect(home.status).toBe(200);
+    expect(html).toContain('<h1>Drop</h1>');
+    expect(html).not.toContain('notes/');
+    expect(html).not.toContain('hello.html');
+    expect(html).not.toContain('Contents');
+    expect(html).not.toContain('Nothing is stored here yet.');
+
+    const directFile = await handleRequest(new Request('https://drop.test/hello.html'), env);
+    expect(directFile.status).toBe(200);
+    expect(await directFile.text()).toContain('Root File');
+
+    const directFolder = await handleRequest(new Request('https://drop.test/notes'), env);
+    expect(directFolder.status).toBe(200);
+    expect(await directFolder.text()).toContain('index.txt');
+  });
+
+  it('deletes files and folders from the admin api', async () => {
+    const env = createEnv();
+    const authHeaders = { authorization: 'Bearer cli-token' };
+
+    const fileForm = new FormData();
+    fileForm.append('files', new File(['<h1>Temp</h1>'], 'temp.html', { type: 'text/html' }));
+    fileForm.append('relativePaths', 'temp.html');
+    await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: authHeaders,
+      body: fileForm,
+    }), env);
+
+    const folderForm = new FormData();
+    folderForm.set('output', 'trash');
+    folderForm.append('files', new File(['<h1>Trash</h1>'], 'index.html', { type: 'text/html' }));
+    folderForm.append('relativePaths', 'index.html');
+    await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: authHeaders,
+      body: folderForm,
+    }), env);
+
+    const deleteFile = await handleRequest(new Request('https://drop.test/api/admin/delete', {
+      method: 'POST',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'temp.html', type: 'file' }),
+    }), env);
+    expect(deleteFile.status).toBe(200);
+
+    const deleteFolder = await handleRequest(new Request('https://drop.test/api/admin/delete', {
+      method: 'POST',
+      headers: { ...authHeaders, 'content-type': 'application/json' },
+      body: JSON.stringify({ path: 'trash', type: 'folder' }),
+    }), env);
+    expect(deleteFolder.status).toBe(200);
+
+    expect((await handleRequest(new Request('https://drop.test/temp.html'), env)).status).toBe(404);
+    expect((await handleRequest(new Request('https://drop.test/trash'), env)).status).toBe(404);
   });
 });

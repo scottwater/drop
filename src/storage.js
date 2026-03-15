@@ -111,3 +111,37 @@ export async function maybeGetFolderIndex(bucket, path = '') {
   const indexObject = await getObject(bucket, indexKey);
   return indexObject ? { key: indexKey, object: indexObject } : null;
 }
+
+export async function listAllKeys(bucket, prefix = '') {
+  const normalizedPrefix = prefix ? toFolderPrefix(normalizePath(prefix, { allowEmpty: false })).replace(/\/$/, '/') : '';
+  let cursor;
+  const keys = [];
+  do {
+    const page = await bucket.list({ prefix: normalizedPrefix, cursor, limit: 1000 });
+    for (const object of page.objects) {
+      keys.push(object.key);
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return keys;
+}
+
+export async function deletePath(bucket, path, type) {
+  const normalized = normalizePath(path, { allowEmpty: false });
+
+  if (type === 'file') {
+    await bucket.delete(normalized);
+    return { deleted: [normalized] };
+  }
+
+  const prefix = toFolderPrefix(normalized);
+  const keys = await listAllKeys(bucket, normalized);
+  const marker = folderMarkerKey(normalized);
+  const uniqueKeys = [...new Set([...keys, marker])];
+  for (const key of uniqueKeys) {
+    if (key === normalized || key.startsWith(prefix) || key === marker) {
+      await bucket.delete(key);
+    }
+  }
+  return { deleted: uniqueKeys.filter((key) => key === marker || key.startsWith(prefix)) };
+}
