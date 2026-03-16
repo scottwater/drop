@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
+import { inferContentType } from './content-type.js';
+
 const CONFIG_PATH = path.join(os.homedir(), '.config', 'drop', 'config.json');
 
 async function main(argv) {
@@ -64,7 +66,9 @@ async function handleUpload(args) {
   if (args.flags.force || args.flags.override) form.set('force', 'true');
   for (const entry of files) {
     const buffer = await fs.readFile(entry.fullPath);
-    form.append('files', new File([buffer], path.basename(entry.fullPath)));
+    form.append('files', new File([buffer], path.basename(entry.fullPath), {
+      type: inferContentType(entry.fullPath),
+    }));
     form.append('relativePaths', entry.relativePath.replace(/\\/g, '/'));
   }
 

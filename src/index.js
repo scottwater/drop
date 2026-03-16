@@ -1,5 +1,5 @@
 import { authenticateRequest, handleLogin, handleLogout, requireOwner, validateAuthConfig } from './auth.js';
-import { inferContentType } from './content-type.js';
+import { inferContentType, resolveContentType } from './content-type.js';
 import { companionHtmlPath, dirname, isMarkdownPath, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
 import { renderAdminPage, renderDirectoryPage, renderLoginPage } from './templates.js';
 import { createFolder, collectConflicts, deletePath, getObject, listDirectory, maybeGetFolderIndex, putObject, searchPaths } from './storage.js';
@@ -126,7 +126,7 @@ async function handleUpload(request, env) {
     uploads.push({
       key: destination,
       body: buffer,
-      contentType: file.type || inferContentType(destination),
+      contentType: resolveContentType(destination, file.type),
     });
 
     if (isMarkdownPath(destination)) {

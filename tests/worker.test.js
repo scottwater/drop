@@ -106,6 +106,72 @@ describe('worker routes', () => {
     expect(await folderView.text()).toContain('post.html');
   });
 
+  it('prefers inferred content types when uploads arrive as octet-stream', async () => {
+    const env = createEnv();
+    const authHeaders = { authorization: `Bearer ${CLI_TOKEN}` };
+
+    const htmlForm = new FormData();
+    htmlForm.set('output', 'site');
+    htmlForm.append('files', new File(['<h1>Hello</h1>'], 'index.html', { type: 'application/octet-stream' }));
+    htmlForm.append('relativePaths', 'index.html');
+
+    const htmlUpload = await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: authHeaders,
+      body: htmlForm,
+    }), env);
+
+    expect(htmlUpload.status).toBe(200);
+    expect((await env.DROP_BUCKET.head('site/index.html')).httpMetadata.contentType).toBe('text/html; charset=utf-8');
+
+    const htmlResponse = await handleRequest(new Request('https://drop.test/site'), env);
+    expect(htmlResponse.headers.get('content-type')).toBe('text/html; charset=utf-8');
+    expect(await htmlResponse.text()).toContain('<h1>Hello</h1>');
+
+    const markdownForm = new FormData();
+    markdownForm.set('output', 'notes/post.md');
+    markdownForm.append('files', new File(['# Hello'], 'post.md', { type: 'application/octet-stream' }));
+    markdownForm.append('relativePaths', 'post.md');
+
+    const markdownUpload = await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: authHeaders,
+      body: markdownForm,
+    }), env);
+
+    expect(markdownUpload.status).toBe(200);
+    expect((await env.DROP_BUCKET.head('notes/post.md')).httpMetadata.contentType).toBe('text/markdown; charset=utf-8');
+    expect((await env.DROP_BUCKET.head('notes/post.html')).httpMetadata.contentType).toBe('text/html; charset=utf-8');
+
+    const imageForm = new FormData();
+    imageForm.set('output', 'assets/photo.png');
+    imageForm.append('files', new File([new Uint8Array([137, 80, 78, 71])], 'photo.png', { type: 'application/octet-stream' }));
+    imageForm.append('relativePaths', 'photo.png');
+
+    const imageUpload = await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: authHeaders,
+      body: imageForm,
+    }), env);
+
+    expect(imageUpload.status).toBe(200);
+    expect((await env.DROP_BUCKET.head('assets/photo.png')).httpMetadata.contentType).toBe('image/png');
+
+    const videoForm = new FormData();
+    videoForm.set('output', 'media/demo.mp4');
+    videoForm.append('files', new File([new Uint8Array([0, 0, 0, 0])], 'demo.mp4', { type: 'application/octet-stream' }));
+    videoForm.append('relativePaths', 'demo.mp4');
+
+    const videoUpload = await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: authHeaders,
+      body: videoForm,
+    }), env);
+
+    expect(videoUpload.status).toBe(200);
+    expect((await env.DROP_BUCKET.head('media/demo.mp4')).httpMetadata.contentType).toBe('video/mp4');
+  });
+
   it('returns conflicts when overwrite is not forced', async () => {
     const env = createEnv();
     const form = new FormData();
