@@ -1,4 +1,5 @@
 import { Marked } from 'marked';
+import { FAVICON_LINKS } from './favicon.js';
 import { FONT_MONO, FONT_SANS, FONT_SERIF, paletteCss } from './theme.js';
 
 // Standard GitHub-file semantics: single newlines inside a paragraph do not
@@ -59,6 +60,7 @@ export function renderMarkdownDocument({ markdown, title }) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(heading)}</title>
+    ${FAVICON_LINKS}
     <style>
       ${paletteCss()}
       * { box-sizing: border-box; }

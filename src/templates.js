@@ -1,3 +1,4 @@
+import { FAVICON_LINKS } from './favicon.js';
 import { escapeHtml } from './markdown.js';
 import { folderHref, humanFileSize } from './path.js';
 import { FONT_MONO, FONT_SANS, paletteCss } from './theme.js';
@@ -198,6 +199,7 @@ function shell({ title, body, script = '' }) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <title>${escapeHtml(title)}</title>
+    ${FAVICON_LINKS}
     <style>${paletteCss()}${BASE_CSS}</style>
   </head>
   <body>${body}${script ? `<script type="module">${script}</script>` : ''}</body>

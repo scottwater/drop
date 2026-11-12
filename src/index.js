@@ -1,5 +1,6 @@
 import { authenticateRequest, handleLogin, handleLogout, requireOwner, sanitizeRedirect, validateAuthConfig } from './auth.js';
 import { inferContentType } from './content-type.js';
+import { FAVICON_PNG, FAVICON_SVG } from './favicon.js';
 import { listConnections, revokeConnection } from './oauth/connections.js';
 import { isOAuthPath, oauthRoute } from './oauth/routes.js';
 import { dirname, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
@@ -33,8 +34,12 @@ export async function handleRequest(request, env, ctx = NO_CONTEXT) {
       return json({ ok: true, app: env.APP_NAME || 'Drop' });
     }
 
+    if (pathname === '/favicon.svg') {
+      return new Response(FAVICON_SVG, { headers: { 'content-type': 'image/svg+xml', 'cache-control': 'public, max-age=86400' } });
+    }
+
     if (pathname === '/favicon.ico') {
-      return new Response(null, { status: 204 });
+      return new Response(FAVICON_PNG, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
     }
 
     if (pathname === '/login' && request.method === 'GET') {

@@ -14,7 +14,7 @@ function page(status, markup, { headers = new Headers(), formTargets = [] } = {}
   // form-action must allow that origin as well as this one.
   headers.set(
     'content-security-policy',
-    `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'${formTargets.map((target) => ` ${target}`).join('')}; frame-ancestors 'none'; base-uri 'none'`,
+    `default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; form-action 'self'${formTargets.map((target) => ` ${target}`).join('')}; frame-ancestors 'none'; base-uri 'none'`,
   );
   headers.set('x-frame-options', 'DENY');
   // Browsers send "Origin: null" on form posts under no-referrer, which the

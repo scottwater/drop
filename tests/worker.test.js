@@ -311,6 +311,20 @@ describe('worker routes', () => {
     expect((await handleRequest(new Request('https://drop.test/docs/a%20file.txt'), env)).status).toBe(200);
   });
 
+  it('serves the droplet favicon and links it from Drop pages', async () => {
+    const env = createEnv();
+    const svg = await handleRequest(new Request('https://drop.test/favicon.svg'), env);
+    expect(svg.headers.get('content-type')).toBe('image/svg+xml');
+    expect(await svg.text()).toContain('<path');
+
+    const ico = await handleRequest(new Request('https://drop.test/favicon.ico'), env);
+    expect(ico.headers.get('content-type')).toBe('image/png');
+    expect([...new Uint8Array(await ico.arrayBuffer()).slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+
+    const login = await (await handleRequest(new Request('https://drop.test/login'), env)).text();
+    expect(login).toContain('<link rel="icon" href="/favicon.svg"');
+  });
+
   it('refuses uploads to paths the Worker answers itself', async () => {
     const env = createEnv();
     const form = new FormData();
