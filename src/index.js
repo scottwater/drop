@@ -1,9 +1,9 @@
 import { authenticateRequest, handleLogin, handleLogout, requireOwner, validateAuthConfig } from './auth.js';
-import { inferContentType, resolveContentType } from './content-type.js';
-import { companionHtmlPath, dirname, isMarkdownPath, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
+import { inferContentType } from './content-type.js';
+import { dirname, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
+import { publish, publishEntries, reservedPathProblem } from './publish.js';
 import { renderAdminPage, renderDirectoryPage, renderLoginPage, renderNotFoundPage } from './templates.js';
-import { createFolder, collectConflicts, deletePath, eachLimited, getObject, listDirectory, maybeGetFolderIndex, putObject, searchPaths } from './storage.js';
-import { renderMarkdownDocument } from './markdown.js';
+import { createFolder, deletePath, getObject, listDirectory, maybeGetFolderIndex, searchPaths } from './storage.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -109,7 +109,7 @@ async function handleUpload(request, env) {
     return json({ error: 'No files provided.' }, 400);
   }
 
-  const uploads = [];
+  const entries = [];
   const multiple = files.length > 1 || relativePaths.some((value) => value.includes('/'));
   const baseForMultiple = output ? resolveDirectoryBase(output) : currentPath;
 
@@ -122,35 +122,23 @@ async function handleUpload(request, env) {
         ? resolveSingleFileDestination(file.name, output)
         : joinPaths(currentPath, file.name);
 
-    const buffer = await file.arrayBuffer();
-    uploads.push({
-      key: destination,
-      body: buffer,
-      contentType: resolveContentType(destination, file.type),
-    });
-
-    if (isMarkdownPath(destination)) {
-      const markdown = new TextDecoder().decode(buffer);
-      uploads.push({
-        key: companionHtmlPath(destination),
-        body: renderMarkdownDocument({ markdown, title: destination }),
-        contentType: 'text/html; charset=utf-8',
-      });
+    const problem = reservedPathProblem(destination);
+    if (problem) {
+      return json({ error: problem }, 400);
     }
+    entries.push(...publishEntries(destination, await file.arrayBuffer(), file.type));
   }
 
-  const conflicts = await collectConflicts(env.DROP_BUCKET, uploads.map((item) => item.key));
-  if (conflicts.length && !force) {
+  const { conflicts, saved } = await publish(env.DROP_BUCKET, entries, { force });
+  if (conflicts.length) {
     return json({ error: 'Conflict', conflicts }, 409);
   }
 
-  await eachLimited(uploads, (upload) => putObject(env.DROP_BUCKET, upload.key, upload.body, upload.contentType));
-
   const refreshPath = multiple
     ? (output ? resolveDirectoryBase(output) : currentPath)
-    : dirname(uploads[0].key);
+    : dirname(entries[0].key);
 
-  return json({ ok: true, saved: uploads.map((item) => item.key), refreshPath });
+  return json({ ok: true, saved, refreshPath });
 }
 
 async function servePublicPath(request, env) {

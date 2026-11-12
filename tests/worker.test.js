@@ -311,6 +311,23 @@ describe('worker routes', () => {
     expect((await handleRequest(new Request('https://drop.test/docs/a%20file.txt'), env)).status).toBe(200);
   });
 
+  it('refuses uploads to paths the Worker answers itself', async () => {
+    const env = createEnv();
+    const form = new FormData();
+    form.set('output', 'admin/page.html');
+    form.append('files', new File(['<h1>x</h1>'], 'page.html', { type: 'text/html' }));
+    form.append('relativePaths', 'page.html');
+
+    const upload = await handleRequest(new Request('https://drop.test/api/admin/upload', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${CLI_TOKEN}` },
+      body: form,
+    }), env);
+    expect(upload.status).toBe(400);
+    expect((await upload.json()).error).toContain('reserved');
+    expect(await env.DROP_BUCKET.head('admin/page.html')).toBeNull();
+  });
+
   it('serves byte ranges and honors If-None-Match', async () => {
     const env = createEnv();
     await env.DROP_BUCKET.put('media/clip.mp4', new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]), { httpMetadata: { contentType: 'video/mp4' } });
