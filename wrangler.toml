@@ -6,12 +6,22 @@ compatibility_date = "2026-03-15"
 compatibility_flags = ["global_fetch_strictly_public"]
 workers_dev = true
 
-# Routes and R2 bucket names are intentionally not hardcoded here.
-# Use `npm run dev` or `npm run deploy` with these shell env vars to inject them:
-# - DROP_BUCKET_NAME
-# - DROP_PREVIEW_BUCKET_NAME
-# - DROP_ROUTE_PATTERN      (optional, but must be paired with DROP_ROUTE_ZONE_NAME)
-# - DROP_ROUTE_ZONE_NAME    (optional, but must be paired with DROP_ROUTE_PATTERN)
+# The route and bucket live here so every deploy path, including Cloudflare's
+# GitHub build running a plain `npx wrangler deploy`, ships them. A deploy that
+# leaves the bucket out takes every public URL down (Error 1101).
+#
+# `npm run dev` / `npm run deploy` (scripts/deploy.mjs) can override them for
+# another setup with these env vars:
+# - DROP_BUCKET_NAME, DROP_PREVIEW_BUCKET_NAME
+# - DROP_ROUTE_PATTERN and DROP_ROUTE_ZONE_NAME (set both together)
+routes = [
+  { pattern = "drops.scottw.com/*", zone_name = "scottw.com" },
+]
+
+[[r2_buckets]]
+binding = "DROP_BUCKET"
+bucket_name = "drop"
+preview_bucket_name = "drop"
 
 [vars]
 APP_NAME = "Drop"

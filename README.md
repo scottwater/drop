@@ -31,21 +31,15 @@ OAuth state lives in the `OAUTH_KV` namespace, which Wrangler creates on first d
 ## Required Cloudflare setup
 
 1. Create an R2 bucket for production and optionally a preview bucket.
-2. Set deploy-time shell env vars for Wrangler config (for example in `.mise.toml`):
-   - `DROP_BUCKET_NAME`
-   - `DROP_PREVIEW_BUCKET_NAME`
-   - optional: `DROP_ROUTE_PATTERN`
-   - optional: `DROP_ROUTE_ZONE_NAME`
+2. Set the bucket name and route in `wrangler.toml` (`[[r2_buckets]]` and `routes`). They live in the config so every deploy path ships them, including Cloudflare's GitHub build running a plain `npx wrangler deploy`. A deploy without the bucket binding fails every public request with Error 1101.
 3. Set Worker runtime secrets:
    - `wrangler secret put OWNER_USERNAME`
    - `wrangler secret put OWNER_PASSWORD`
    - `wrangler secret put SESSION_SECRET` (use a long random value; Drop now rejects weak values shorter than 32 characters)
    - `wrangler secret put CLI_TOKENS`
-4. Notes on deploy-time config:
-   - Drop no longer hardcodes any route/domain or bucket name in `wrangler.toml`.
-   - `DROP_ROUTE_PATTERN` should look like `drops.example.com/*` and must not include `https://`.
-   - If route vars are unset, deploy uses the default Workers URL only.
-   - These values cannot come from Wrangler runtime secrets because routes/bindings are deployment config, not Worker runtime config.
+4. Optional deploy-time overrides for `npm run dev` / `npm run deploy` (for example in `.mise.toml`), useful for a second environment without editing `wrangler.toml`:
+   - `DROP_BUCKET_NAME`, `DROP_PREVIEW_BUCKET_NAME`
+   - `DROP_ROUTE_PATTERN` and `DROP_ROUTE_ZONE_NAME`, set together. The pattern looks like `drops.example.com/*`, without `https://`.
 5. Optional login throttling vars:
    - `LOGIN_RATE_LIMIT_MAX_ATTEMPTS` (default `5`)
    - `LOGIN_RATE_LIMIT_WINDOW_SECONDS` (default `900`)
@@ -59,28 +53,19 @@ npm test
 npm run dev
 ```
 
-`npm run dev` and `npm run deploy` now both expect these deploy-time shell env vars to be set:
-
-```bash
-DROP_BUCKET_NAME='drop'
-DROP_PREVIEW_BUCKET_NAME='drop-preview'
-```
-
 ## Deploy
 
-Default deploy with no custom route:
+Pushing to `main` deploys through Cloudflare's GitHub integration. To deploy by hand:
 
 ```bash
-DROP_BUCKET_NAME='drop' \
-DROP_PREVIEW_BUCKET_NAME='drop-preview' \
 npm run deploy
 ```
 
-Deploy with a custom route:
+To deploy somewhere else without editing `wrangler.toml`, override the bucket and route:
 
 ```bash
-DROP_BUCKET_NAME='drop' \
-DROP_PREVIEW_BUCKET_NAME='drop-preview' \
+DROP_BUCKET_NAME='other-bucket' \
+DROP_PREVIEW_BUCKET_NAME='other-bucket-preview' \
 DROP_ROUTE_PATTERN='drops.example.com/*' \
 DROP_ROUTE_ZONE_NAME='example.com' \
 npm run deploy
