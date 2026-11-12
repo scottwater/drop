@@ -94,7 +94,15 @@ export function toFolderPrefix(path) {
 
 export function publicHref(path) {
   const normalized = normalizePath(path, { allowEmpty: true });
-  return `/${normalized}`.replace(/\/$/, '/') || '/';
+  if (!normalized) return '/';
+  return `/${normalized.split('/').map(encodeURIComponent).join('/')}`;
+}
+
+// Folders always link with a trailing slash so relative URLs inside a
+// published index.html (e.g. "style.css") resolve within the folder.
+export function folderHref(path) {
+  const href = publicHref(path);
+  return href.endsWith('/') ? href : `${href}/`;
 }
 
 export function humanFileSize(bytes = 0) {

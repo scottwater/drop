@@ -28,26 +28,54 @@ export class MockBucket {
     };
   }
 
-  async get(key) {
+  // Supports the subset of R2's get() options Drop uses: `onlyIf` and `range`
+  // passed as request Headers (If-None-Match and `bytes=` ranges).
+  async get(key, options = {}) {
     const object = this.objects.get(key);
     if (!object) return null;
-    return {
+    const httpEtag = `"${object.etag}"`;
+    const base = {
       key: object.key,
-      body: object.body,
       size: object.size,
       uploaded: object.uploaded,
       httpMetadata: object.httpMetadata,
-      httpEtag: object.etag,
+      httpEtag,
       writeHttpMetadata(headers) {
         for (const [metaKey, value] of Object.entries(object.httpMetadata || {})) {
           if (value) headers.set(metaKey.replace(/[A-Z]/g, (char) => `-${char.toLowerCase()}`), value);
         }
       },
+    };
+
+    if (options.onlyIf?.get?.('if-none-match') === httpEtag) {
+      return base;
+    }
+
+    let body = object.body;
+    let range;
+    const rangeHeader = options.range?.get?.('range');
+    if (rangeHeader) {
+      const [, start, end] = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader) || [];
+      if (start === '' && end) {
+        range = { suffix: Number(end) };
+        body = body.slice(-Number(end));
+      } else if (start !== undefined) {
+        const offset = Number(start);
+        const last = end ? Math.min(Number(end), object.size - 1) : object.size - 1;
+        range = { offset, length: last - offset + 1 };
+        body = body.slice(offset, last + 1);
+      }
+    }
+
+    return {
+      ...base,
+      body,
+      range,
       async text() {
-        return new TextDecoder().decode(object.body);
+        return new TextDecoder().decode(body);
       },
       async arrayBuffer() {
-        return object.body.buffer.slice(object.body.byteOffset, object.body.byteOffset + object.body.byteLength);
+        return body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength);
       },
     };
   }

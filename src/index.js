@@ -2,7 +2,7 @@ import { authenticateRequest, handleLogin, handleLogout, requireOwner, validateA
 import { inferContentType, resolveContentType } from './content-type.js';
 import { companionHtmlPath, dirname, isMarkdownPath, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
 import { renderAdminPage, renderDirectoryPage, renderLoginPage } from './templates.js';
-import { createFolder, collectConflicts, deletePath, getObject, listDirectory, maybeGetFolderIndex, putObject, searchPaths } from './storage.js';
+import { createFolder, collectConflicts, deletePath, eachLimited, getObject, listDirectory, maybeGetFolderIndex, putObject, searchPaths } from './storage.js';
 import { renderMarkdownDocument } from './markdown.js';
 
 export default {
@@ -144,9 +144,7 @@ async function handleUpload(request, env) {
     return json({ error: 'Conflict', conflicts }, 409);
   }
 
-  for (const upload of uploads) {
-    await putObject(env.DROP_BUCKET, upload.key, upload.body, upload.contentType);
-  }
+  await eachLimited(uploads, (upload) => putObject(env.DROP_BUCKET, upload.key, upload.body, upload.contentType));
 
   const refreshPath = multiple
     ? (output ? resolveDirectoryBase(output) : currentPath)
@@ -158,33 +156,46 @@ async function handleUpload(request, env) {
 async function servePublicPath(request, env) {
   const url = new URL(request.url);
   const requestedPath = normalizePath(url.pathname, { allowEmpty: true });
+  const conditional = request.method === 'GET' ? request.headers : undefined;
 
   if (requestedPath) {
-    const object = await getObject(env.DROP_BUCKET, requestedPath);
+    const object = await getObject(env.DROP_BUCKET, requestedPath, conditional);
     if (object) {
-      return objectResponse(object, requestedPath);
+      return objectResponse(object, requestedPath, request);
     }
   }
 
-  const index = await maybeGetFolderIndex(env.DROP_BUCKET, requestedPath);
+  // Folders must be addressed with a trailing slash so relative links inside
+  // an index.html resolve against the folder rather than its parent.
+  const needsSlash = requestedPath !== '' && !url.pathname.endsWith('/');
+
+  const index = await maybeGetFolderIndex(env.DROP_BUCKET, requestedPath, needsSlash ? undefined : conditional);
   if (index) {
-    return objectResponse(index.object, index.key);
+    return needsSlash ? folderRedirect(url) : objectResponse(index.object, index.key, request);
+  }
+
+  if (requestedPath === '') {
+    return html(renderDirectoryPage({ isRoot: true }));
   }
 
   const listing = await listDirectory(env.DROP_BUCKET, requestedPath);
-  if (listing.hasEntries || requestedPath === '') {
+  if (listing.hasEntries) {
+    if (needsSlash) return folderRedirect(url);
     return html(renderDirectoryPage({
       path: requestedPath,
-      folders: requestedPath === '' ? [] : listing.folders,
-      files: requestedPath === '' ? [] : listing.files,
-      isRoot: requestedPath === '',
+      folders: listing.folders,
+      files: listing.files,
     }));
   }
 
   return new Response('Not found', { status: 404 });
 }
 
-function objectResponse(object, key) {
+function folderRedirect(url) {
+  return redirect(`${url.pathname}/${url.search}`);
+}
+
+function objectResponse(object, key, request) {
   const headers = new Headers();
   if (typeof object.writeHttpMetadata === 'function') {
     object.writeHttpMetadata(headers);
@@ -195,7 +206,33 @@ function objectResponse(object, key) {
   if (object.httpEtag) {
     headers.set('etag', object.httpEtag);
   }
+  headers.set('accept-ranges', 'bytes');
+  headers.set('x-content-type-options', 'nosniff');
+
+  // R2 returns an object without a body when an If-None-Match / If-Modified-Since
+  // precondition says the client's copy is current.
+  if (!('body' in object) || !object.body) {
+    return new Response(null, { status: 304, headers });
+  }
+
+  if (object.range && request.headers.has('range')) {
+    const { offset, length } = resolveRange(object.range, object.size);
+    headers.set('content-range', `bytes ${offset}-${offset + length - 1}/${object.size}`);
+    headers.set('content-length', String(length));
+    return new Response(object.body, { status: 206, headers });
+  }
+
   return new Response(object.body, { headers });
+}
+
+function resolveRange(range, size) {
+  if ('suffix' in range && range.suffix !== undefined) {
+    const length = Math.min(range.suffix, size);
+    return { offset: size - length, length };
+  }
+  const offset = range.offset ?? 0;
+  const length = range.length ?? size - offset;
+  return { offset, length };
 }
 
 function ensureAuthConfiguration(env) {

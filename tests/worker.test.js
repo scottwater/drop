@@ -101,7 +101,7 @@ describe('worker routes', () => {
     expect(renderedHtml.status).toBe(200);
     expect(await renderedHtml.text()).toContain('Field Notes');
 
-    const folderView = await handleRequest(new Request('https://drop.test/notes'), env);
+    const folderView = await handleRequest(new Request('https://drop.test/notes/'), env);
     expect(folderView.status).toBe(200);
     expect(await folderView.text()).toContain('post.html');
   });
@@ -124,7 +124,7 @@ describe('worker routes', () => {
     expect(htmlUpload.status).toBe(200);
     expect((await env.DROP_BUCKET.head('site/index.html')).httpMetadata.contentType).toBe('text/html; charset=utf-8');
 
-    const htmlResponse = await handleRequest(new Request('https://drop.test/site'), env);
+    const htmlResponse = await handleRequest(new Request('https://drop.test/site/'), env);
     expect(htmlResponse.headers.get('content-type')).toBe('text/html; charset=utf-8');
     expect(await htmlResponse.text()).toContain('<h1>Hello</h1>');
 
@@ -202,7 +202,7 @@ describe('worker routes', () => {
     const payload = await second.json();
     expect(payload.conflicts).toContain('site/index.html');
 
-    const publicView = await handleRequest(new Request('https://drop.test/site'), env);
+    const publicView = await handleRequest(new Request('https://drop.test/site/'), env);
     expect(publicView.status).toBe(200);
     expect(await publicView.text()).toContain('<h1>One</h1>');
   });
@@ -245,7 +245,7 @@ describe('worker routes', () => {
     expect(directFile.status).toBe(200);
     expect(await directFile.text()).toContain('Root File');
 
-    const directFolder = await handleRequest(new Request('https://drop.test/notes'), env);
+    const directFolder = await handleRequest(new Request('https://drop.test/notes/'), env);
     expect(directFolder.status).toBe(200);
     expect(await directFolder.text()).toContain('index.txt');
   });
@@ -288,7 +288,49 @@ describe('worker routes', () => {
     expect(deleteFolder.status).toBe(200);
 
     expect((await handleRequest(new Request('https://drop.test/temp.html'), env)).status).toBe(404);
-    expect((await handleRequest(new Request('https://drop.test/trash'), env)).status).toBe(404);
+    const gone = await handleRequest(new Request('https://drop.test/trash/'), env);
+    expect(gone.status).toBe(404);
+    expect(await gone.text()).toContain('Not found');
+  });
+
+  it('redirects folder paths to a trailing slash so relative links resolve', async () => {
+    const env = createEnv();
+    await env.DROP_BUCKET.put('site/index.html', '<img src="logo.png">', { httpMetadata: { contentType: 'text/html' } });
+    await env.DROP_BUCKET.put('docs/a file.txt', 'hi', { httpMetadata: { contentType: 'text/plain' } });
+
+    const site = await handleRequest(new Request('https://drop.test/site?x=1'), env);
+    expect(site.status).toBe(302);
+    expect(site.headers.get('location')).toBe('/site/?x=1');
+
+    const listing = await handleRequest(new Request('https://drop.test/docs'), env);
+    expect(listing.status).toBe(302);
+    expect(listing.headers.get('location')).toBe('/docs/');
+
+    const listed = await (await handleRequest(new Request('https://drop.test/docs/'), env)).text();
+    expect(listed).toContain('href="/docs/a%20file.txt"');
+    expect((await handleRequest(new Request('https://drop.test/docs/a%20file.txt'), env)).status).toBe(200);
+  });
+
+  it('serves byte ranges and honors If-None-Match', async () => {
+    const env = createEnv();
+    await env.DROP_BUCKET.put('media/clip.mp4', new Uint8Array([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]), { httpMetadata: { contentType: 'video/mp4' } });
+
+    const full = await handleRequest(new Request('https://drop.test/media/clip.mp4'), env);
+    expect(full.status).toBe(200);
+    expect(full.headers.get('accept-ranges')).toBe('bytes');
+    const etag = full.headers.get('etag');
+
+    const partial = await handleRequest(new Request('https://drop.test/media/clip.mp4', { headers: { range: 'bytes=2-5' } }), env);
+    expect(partial.status).toBe(206);
+    expect(partial.headers.get('content-range')).toBe('bytes 2-5/10');
+    expect([...new Uint8Array(await partial.arrayBuffer())]).toEqual([2, 3, 4, 5]);
+
+    const tail = await handleRequest(new Request('https://drop.test/media/clip.mp4', { headers: { range: 'bytes=-3' } }), env);
+    expect(tail.status).toBe(206);
+    expect(tail.headers.get('content-range')).toBe('bytes 7-9/10');
+
+    const cached = await handleRequest(new Request('https://drop.test/media/clip.mp4', { headers: { 'if-none-match': etag } }), env);
+    expect(cached.status).toBe(304);
   });
 
   it('fails closed when auth configuration is missing or weak', async () => {
