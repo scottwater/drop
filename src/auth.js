@@ -67,7 +67,7 @@ export async function authenticateRequest(request, env) {
   const authHeader = request.headers.get('authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.slice('Bearer '.length).trim();
-    if (token && getCliTokens(env).includes(token)) {
+    if (token && await matchesAny(token, getCliTokens(env), String(env.SESSION_SECRET || ''))) {
       return { ok: true, mode: 'cli' };
     }
   }
@@ -109,7 +109,10 @@ export async function handleLogin(request, env) {
     return loginRateLimitedResponse(redirectTo, activeBlock.retryAfterSeconds);
   }
 
-  if (username !== env.OWNER_USERNAME || password !== env.OWNER_PASSWORD) {
+  const secret = String(env.SESSION_SECRET || '');
+  const usernameOk = await secureEqual(username, String(env.OWNER_USERNAME || ''), secret);
+  const passwordOk = await secureEqual(password, String(env.OWNER_PASSWORD || ''), secret);
+  if (!usernameOk || !passwordOk) {
     const failure = recordFailedLoginAttempt(request, env);
     if (failure.blocked) {
       return loginRateLimitedResponse(redirectTo, failure.retryAfterSeconds);
@@ -232,6 +235,18 @@ function base64UrlDecode(value) {
 function bytesToBase64Url(bytes) {
   const binary = Array.from(bytes, (byte) => String.fromCharCode(byte)).join('');
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+// Compares secrets via their HMACs so the comparison takes the same time
+// regardless of where (or whether) the inputs differ, including length.
+async function secureEqual(provided, expected, secret) {
+  const [a, b] = await Promise.all([signText(provided, secret), signText(expected, secret)]);
+  return timingSafeEqual(a, b);
+}
+
+async function matchesAny(provided, candidates, secret) {
+  const results = await Promise.all(candidates.map((candidate) => secureEqual(provided, candidate, secret)));
+  return results.includes(true);
 }
 
 function timingSafeEqual(a, b) {
