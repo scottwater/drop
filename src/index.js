@@ -1,7 +1,7 @@
 import { authenticateRequest, handleLogin, handleLogout, requireOwner, validateAuthConfig } from './auth.js';
 import { inferContentType, resolveContentType } from './content-type.js';
 import { companionHtmlPath, dirname, isMarkdownPath, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
-import { renderAdminPage, renderDirectoryPage, renderLoginPage } from './templates.js';
+import { renderAdminPage, renderDirectoryPage, renderLoginPage, renderNotFoundPage } from './templates.js';
 import { createFolder, collectConflicts, deletePath, eachLimited, getObject, listDirectory, maybeGetFolderIndex, putObject, searchPaths } from './storage.js';
 import { renderMarkdownDocument } from './markdown.js';
 
@@ -188,7 +188,7 @@ async function servePublicPath(request, env) {
     }));
   }
 
-  return new Response('Not found', { status: 404 });
+  return html(renderNotFoundPage(), 404);
 }
 
 function folderRedirect(url) {

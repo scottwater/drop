@@ -27,7 +27,7 @@ describe('worker routes', () => {
     const env = createEnv();
     const loginResponse = await handleRequest(new Request('https://drop.test/login'), env);
     expect(loginResponse.status).toBe(200);
-    expect(await loginResponse.text()).toContain('Quiet publishing');
+    expect(await loginResponse.text()).toContain('Sign in');
 
     const unauthorized = await handleRequest(new Request('https://drop.test/api/admin/list'), env);
     expect(unauthorized.status).toBe(401);
@@ -56,9 +56,10 @@ describe('worker routes', () => {
 
     expect(admin.status).toBe(200);
     const html = await admin.text();
-    expect(html).toContain('owner console');
-    expect(html).toContain('Choose files');
-    expect(html).toContain('Choose folder');
+    expect(html).toContain('Upload files');
+    expect(html).toContain('Upload folder');
+    expect(html).toContain('New folder');
+    expect(html).toContain('Copy link');
     expect(html).toContain('Delete');
 
     const scriptMatch = html.match(/<script type="module">([\s\S]*)<\/script>/);
@@ -235,11 +236,10 @@ describe('worker routes', () => {
     const home = await handleRequest(new Request('https://drop.test/'), env);
     const html = await home.text();
     expect(home.status).toBe(200);
-    expect(html).toContain('<h1>Drop</h1>');
-    expect(html).not.toContain('notes/');
+    expect(html).toContain('<h1 class="brand">');
+    expect(html).not.toContain('notes');
     expect(html).not.toContain('hello.html');
-    expect(html).not.toContain('Contents');
-    expect(html).not.toContain('Nothing is stored here yet.');
+    expect(html).not.toContain('class="table"');
 
     const directFile = await handleRequest(new Request('https://drop.test/hello.html'), env);
     expect(directFile.status).toBe(200);
