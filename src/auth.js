@@ -209,7 +209,7 @@ async function verifySignedValue(input, secret) {
   }
 }
 
-async function signText(value, secret) {
+export async function signText(value, secret) {
   const key = await crypto.subtle.importKey(
     'raw',
     new TextEncoder().encode(secret),

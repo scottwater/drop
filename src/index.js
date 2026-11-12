@@ -1,5 +1,7 @@
-import { authenticateRequest, handleLogin, handleLogout, requireOwner, validateAuthConfig } from './auth.js';
+import { authenticateRequest, handleLogin, handleLogout, requireOwner, sanitizeRedirect, validateAuthConfig } from './auth.js';
 import { inferContentType } from './content-type.js';
+import { listConnections, revokeConnection } from './oauth/connections.js';
+import { isOAuthPath, oauthRoute } from './oauth/routes.js';
 import { dirname, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
 import { publish, publishEntries, reservedPathProblem } from './publish.js';
 import { renderAdminPage, renderDirectoryPage, renderLoginPage, renderNotFoundPage } from './templates.js';
@@ -13,12 +15,19 @@ export default {
 
 const validatedEnvironments = new WeakSet();
 
-export async function handleRequest(request, env) {
+// Stand-in for callers (tests) that don't pass a Workers ExecutionContext.
+const NO_CONTEXT = { waitUntil() {}, passThroughOnException() {} };
+
+export async function handleRequest(request, env, ctx = NO_CONTEXT) {
   const url = new URL(request.url);
   const pathname = url.pathname;
 
   try {
     ensureAuthConfiguration(env);
+
+    if (isOAuthPath(pathname)) {
+      return await oauthRoute(request, env, ctx);
+    }
 
     if (pathname === '/__health') {
       return json({ ok: true, app: env.APP_NAME || 'Drop' });
@@ -30,8 +39,8 @@ export async function handleRequest(request, env) {
 
     if (pathname === '/login' && request.method === 'GET') {
       const auth = await authenticateRequest(request, env);
-      if (auth.ok) {
-        return redirect('/admin');
+      if (auth.ok && auth.mode === 'web') {
+        return redirect(sanitizeRedirect(url.searchParams.get('redirect') || '/admin'));
       }
       return html(renderLoginPage({ redirect: url.searchParams.get('redirect') || '/admin' }));
     }
@@ -86,6 +95,18 @@ export async function handleRequest(request, env) {
       const type = body.type === 'folder' ? 'folder' : 'file';
       const result = await deletePath(env.DROP_BUCKET, path, type);
       return json({ ok: true, path, type, deleted: result.deleted });
+    }
+
+    if (pathname === '/api/admin/connections' && request.method === 'GET') {
+      await requireOwner(request, env);
+      return json({ connections: await listConnections(request, env) });
+    }
+
+    if (pathname === '/api/admin/connections/revoke' && request.method === 'POST') {
+      await requireOwner(request, env);
+      const body = await request.json();
+      await revokeConnection(request, env, String(body.id || ''));
+      return json({ ok: true });
     }
 
     return servePublicPath(request, env);

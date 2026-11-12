@@ -152,6 +152,31 @@ a.name:hover span { text-decoration: underline; text-underline-offset: 2px; }
 .auth-card h1 { margin: 10px 0 2px; font-size: 20px; letter-spacing: -0.01em; }
 .field { display: grid; gap: 6px; color: var(--muted); font-size: 13px; font-weight: 500; }
 .error-text { margin: 0; color: var(--danger); font-size: 13px; }
+.auth-card.wide { width: min(480px, 100%); }
+.auth-card p { margin: 0; }
+.lead, .muted { color: var(--muted); }
+.faint { color: var(--faint); }
+.warn { color: var(--danger); }
+.actions.end { justify-content: flex-end; }
+.scopes { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--border); }
+.scopes li { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.check { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+.check input { flex: none; width: 16px; height: 16px; margin-top: 2px; accent-color: var(--accent); }
+
+dialog {
+  width: min(560px, 100% - 32px); padding: 0;
+  border: 1px solid var(--border); border-radius: 12px;
+  background: var(--surface); color: var(--text);
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.2);
+}
+dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.dialog-head h2 { margin: 0; font-size: 15px; font-weight: 600; }
+.dialog-body { padding: 8px 16px 16px; }
+.dialog-body > p { margin: 8px 0; color: var(--muted); font-size: 13px; }
+.connection { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.connection:last-of-type { border-bottom: 0; }
+.connection-meta { color: var(--muted); font-size: 12px; }
 
 @media (max-width: 640px) {
   .topbar { flex-wrap: wrap; padding: 10px 16px; }
@@ -180,12 +205,14 @@ function shell({ title, body, script = '' }) {
 }
 
 export function renderLoginPage({ error = '', redirect = '/admin' } = {}) {
+  const connecting = redirect.startsWith('/oauth/authorize');
   return shell({
     title: 'Sign in · Drop',
     body: `<main class="auth">
       <form class="auth-card" method="post" action="/login">
         <span class="brand">${ICONS.mark}Drop</span>
         <h1>Sign in</h1>
+        ${connecting ? '<p class="lead">An app is asking to connect to Drop. Sign in to review its request.</p>' : ''}
         <input type="hidden" name="redirect" value="${escapeHtml(redirect)}" />
         <label class="field">Username
           <input type="text" name="username" autocomplete="username" required autofocus />
@@ -197,6 +224,54 @@ export function renderLoginPage({ error = '', redirect = '/admin' } = {}) {
         <button class="btn primary block" type="submit">Sign in</button>
       </form>
     </main>`,
+  });
+}
+
+// Asks the owner to approve an MCP client. Reading is always granted; the
+// other scopes start unticked whatever the app asked for, since many apps ask
+// only for the baseline and can't step up later.
+export function renderConsentPage({ details, handle, scopes }) {
+  const name = escapeHtml(details.clientName);
+  const requested = new Set(details.scope);
+  // Only a metadata-document client's domain is verified; anyone can
+  // self-register under any name.
+  const publisher = details.clientDomain
+    ? `<p>Published by <strong>${escapeHtml(details.clientDomain)}</strong>.</p>`
+    : `<p class="warn">Any app can register under any name, so “${name}” is not verified. Continue only if you just started connecting it and recognise <strong>${escapeHtml(details.redirectHost)}</strong>.</p>`;
+  const option = (scope, label, detail) => `<li><label class="check">
+      <input type="checkbox" name="scope" value="${scope}" />
+      <span><strong>${label}</strong>${requested.has(scope) ? ' <span class="faint">(requested)</span>' : ''}<br /><span class="muted">${detail}</span></span>
+    </label></li>`;
+  return shell({
+    title: `Connect ${details.clientName} · Drop`,
+    body: `<main class="auth">
+      <form class="auth-card wide" method="post">
+        <span class="brand">${ICONS.mark}Drop</span>
+        <h1>Connect ${name} to Drop?</h1>
+        ${publisher}
+        <p>Access will be sent to <strong>${escapeHtml(details.redirectHost)}</strong>.</p>
+        ${details.redirectIsLoopback ? '<p class="warn"><strong>Access goes to an app on this computer.</strong> Continue only if you just started connecting from it.</p>' : ''}
+        <input type="hidden" name="handle" value="${escapeHtml(handle)}" />
+        <ul class="scopes">
+          <li><strong>Read your files</strong><br /><span class="muted">List, search and read every file and folder, including ones the public can’t browse.</span></li>
+          ${option(scopes.write, 'Create and replace files', 'Write files and folders. Anything written is published at a public link.')}
+          ${option(scopes.delete, 'Delete files', 'Delete any file or folder.')}
+          ${option(scopes.offline, 'Stay connected', `Access lasts while ${name} uses it and ends after 30 days unused. Without this, it ends after 15 minutes.`)}
+        </ul>
+        <p class="muted">You can disconnect ${name} at any time from Connected apps.</p>
+        <div class="actions end">
+          <button class="btn" name="decision" value="deny">Deny</button>
+          <button class="btn primary" name="decision" value="approve">Allow</button>
+        </div>
+      </form>
+    </main>`,
+  });
+}
+
+export function renderMessagePage({ title, message, hint = '' }) {
+  return shell({
+    title: `${title} · Drop`,
+    body: `<main class="blank"><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p>${hint ? `<p class="faint">${escapeHtml(hint)}</p>` : ''}</main>`,
   });
 }
 
@@ -268,6 +343,7 @@ export function renderAdminPage() {
         <kbd>/</kbd>
       </label>
       <nav class="topbar-nav">
+        <button class="btn ghost" type="button" id="open-connections">Connected apps</button>
         <form method="post" action="/logout"><button class="btn ghost" type="submit">Log out</button></form>
       </nav>
     </header>
@@ -295,6 +371,16 @@ export function renderAdminPage() {
       </section>
       <div class="table admin" id="listing" aria-live="polite"></div>
     </main>
+    <dialog id="connections" aria-labelledby="connections-title">
+      <div class="dialog-head">
+        <h2 id="connections-title">Connected apps</h2>
+        <button class="btn ghost" type="button" id="close-connections">Close</button>
+      </div>
+      <div class="dialog-body">
+        <p>Apps you’ve approved to use Drop over MCP. Connect a new one with <code id="mcp-url"></code></p>
+        <div id="connection-list"></div>
+      </div>
+    </dialog>
     <div id="toast" class="toast" role="status" hidden></div>
     <input id="upload-files" class="sr-only" type="file" multiple tabindex="-1" aria-hidden="true" />
     <input id="upload-folder" class="sr-only" type="file" webkitdirectory multiple tabindex="-1" aria-hidden="true" />`,
@@ -615,6 +701,48 @@ async function copyLink(href) {
     prompt('Copy this link:', url);
   }
 }
+
+const connectionsDialog = $('connections');
+const connectionList = $('connection-list');
+const SCOPE_LABELS = { 'drop:read': 'Read', 'drop:write': 'Write', 'drop:delete': 'Delete', 'offline_access': 'Stays connected' };
+
+async function loadConnections() {
+  connectionList.innerHTML = '<p class="muted">Loading…</p>';
+  const { response, data } = await api('/api/admin/connections');
+  if (!response.ok) {
+    connectionList.innerHTML = '<p class="warn">' + esc(data.error || 'Could not load connected apps.') + '</p>';
+    return;
+  }
+  connectionList.innerHTML = data.connections.length
+    ? data.connections.map((connection) => '<div class="connection"><div>'
+        + '<strong>' + esc(connection.name) + '</strong>'
+        + '<div class="connection-meta">' + esc(connection.scopes.map((scope) => SCOPE_LABELS[scope] || scope).join(' · '))
+        + ' · since ' + esc(formatDate(connection.createdAt * 1000)) + '</div></div>'
+        + '<button class="btn" type="button" data-revoke="' + esc(connection.id) + '" data-name="' + esc(connection.name) + '">Disconnect</button></div>').join('')
+    : '<p class="muted">No apps are connected.</p>';
+}
+
+$('mcp-url').textContent = location.origin + '/mcp';
+$('open-connections').addEventListener('click', () => {
+  connectionsDialog.showModal();
+  loadConnections();
+});
+$('close-connections').addEventListener('click', () => connectionsDialog.close());
+connectionList.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-revoke]');
+  if (!button || !confirm('Disconnect ' + button.getAttribute('data-name') + '?')) return;
+  const { response, data } = await api('/api/admin/connections/revoke', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ id: button.getAttribute('data-revoke') })
+  });
+  if (!response.ok) {
+    toast(data.error || 'Could not disconnect.', 'error');
+    return;
+  }
+  toast('Disconnected ' + button.getAttribute('data-name'), 'ok');
+  loadConnections();
+});
 
 $('pick-files').addEventListener('click', () => fileInput.click());
 $('pick-folder').addEventListener('click', () => folderInput.click());

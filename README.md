@@ -10,9 +10,23 @@ Drop is a Cloudflare-first personal publishing utility for uploading files and f
 - Markdown uploads generate companion `.html` files while preserving the original `.md`
 - Instant web uploads via drag/drop or chooser buttons
 - CLI for upload, list, search, folder creation, and deletion
+- MCP server at `/mcp` so AI apps can list, read, write, and delete files
+- R2-backed storage with overwrite protection
 
 See [CLI.md](./CLI.md) for local CLI installation, authentication, and command usage.
-- R2-backed storage with overwrite protection
+
+## MCP
+
+Add `https://<your-drop-host>/mcp` as a remote MCP server in any client that supports OAuth (Claude, Claude Code, Codex, Hammer). The client registers itself, then opens Drop in your browser: sign in and choose what it may do.
+
+- **Read** (always granted): `list_files`, `search_files`, `read_file`
+- **Create and replace files**: `write_file`, `create_folder`. Anything written is public to anyone with the link, and `.md` files get a rendered `.html` beside them.
+- **Delete files**: `delete_file`, `delete_folder`
+- **Stay connected**: refresh tokens that last while the app keeps using them, ending after 30 days unused. Without it, access ends after 15 minutes.
+
+The admin's **Connected apps** dialog lists approved apps and disconnects them. Changing `OWNER_USERNAME`, `OWNER_PASSWORD`, or `SESSION_SECRET` disconnects every app at once.
+
+OAuth state lives in the `OAUTH_KV` namespace, which Wrangler creates on first deploy. Set the optional `PUBLIC_ORIGIN` var (for example `https://drop.example.com`) to pin the OAuth issuer to one hostname; otherwise the custom domain and workers.dev each act as separate issuers. The paths `/mcp`, `/oauth/*`, and `/.well-known/oauth-*` are reserved, as are `/admin`, `/login`, `/logout`, and `/api`, so files can't be uploaded there.
 
 ## Required Cloudflare setup
 

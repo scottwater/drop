@@ -1,6 +1,9 @@
 name = "drop"
 main = "src/index.js"
 compatibility_date = "2026-03-15"
+# OAuth client metadata documents (CIMD) are fetched from client URLs; never let
+# those fetches reach private or same-zone addresses.
+compatibility_flags = ["global_fetch_strictly_public"]
 workers_dev = true
 
 # Routes and R2 bucket names are intentionally not hardcoded here.
@@ -23,3 +26,12 @@ APP_NAME = "Drop"
 # - LOGIN_RATE_LIMIT_MAX_ATTEMPTS   (default 5)
 # - LOGIN_RATE_LIMIT_WINDOW_SECONDS (default 900)
 # - LOGIN_RATE_LIMIT_BLOCK_SECONDS  (default 900)
+#
+# Optional: PUBLIC_ORIGIN (e.g. "https://drop.example.com") pins the OAuth issuer
+# and MCP URL to one hostname. Without it, each hostname the Worker answers on
+# (custom domain, workers.dev) acts as its own issuer.
+
+# OAuth clients, grants and tokens for the MCP server at /mcp. Wrangler creates
+# the namespace on first deploy. Without this binding, /mcp and /oauth/* 404.
+[[kv_namespaces]]
+binding = "OAUTH_KV"
