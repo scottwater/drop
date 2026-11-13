@@ -1,6 +1,7 @@
 import { FAVICON_LINKS } from './favicon.js';
 import { escapeHtml } from './markdown.js';
 import { folderHref, humanFileSize } from './path.js';
+import { APP_HEAD_LINKS } from './webapp.js';
 import { FONT_MONO, FONT_SANS, paletteCss } from './theme.js';
 
 const ICONS = {
@@ -191,7 +192,9 @@ dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
 }
 `;
 
-function shell({ title, body, script = '' }) {
+// `installable` adds the web app manifest, on the owner's pages only, so
+// visitors to public links aren't offered to install Drop.
+function shell({ title, body, script = '', installable = false }) {
   return `<!doctype html>
 <html lang="en">
   <head>
@@ -199,7 +202,7 @@ function shell({ title, body, script = '' }) {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
     <title>${escapeHtml(title)}</title>
-    ${FAVICON_LINKS}
+    ${FAVICON_LINKS}${installable ? `\n    ${APP_HEAD_LINKS}` : ''}
     <style>${paletteCss()}${BASE_CSS}</style>
   </head>
   <body>${body}${script ? `<script type="module">${script}</script>` : ''}</body>
@@ -209,6 +212,7 @@ function shell({ title, body, script = '' }) {
 export function renderLoginPage({ error = '', redirect = '/admin' } = {}) {
   const connecting = redirect.startsWith('/oauth/authorize');
   return shell({
+    installable: true,
     title: 'Sign in · Drop',
     body: `<main class="auth">
       <form class="auth-card" method="post" action="/login">
@@ -336,6 +340,7 @@ function formatDate(value) {
 
 export function renderAdminPage() {
   return shell({
+    installable: true,
     title: 'Drop',
     body: `<header class="topbar">
       <a class="brand" href="/admin">${ICONS.mark}Drop</a>

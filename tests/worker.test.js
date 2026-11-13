@@ -325,6 +325,31 @@ describe('worker routes', () => {
     expect(login).toContain('<link rel="icon" href="/favicon.svg"');
   });
 
+  it('serves an installable web app manifest on the owner pages only', async () => {
+    const env = createEnv();
+    const response = await handleRequest(new Request('https://drop.test/manifest.webmanifest'), env);
+    expect(response.headers.get('content-type')).toBe('application/manifest+json');
+    const manifest = await response.json();
+    expect(manifest).toMatchObject({ name: 'Drop', start_url: '/admin', display: 'standalone' });
+
+    for (const icon of manifest.icons) {
+      const image = await handleRequest(new Request(`https://drop.test${icon.src}`), env);
+      expect(image.headers.get('content-type')).toBe('image/png');
+      expect([...new Uint8Array(await image.arrayBuffer()).slice(0, 4)]).toEqual([0x89, 0x50, 0x4e, 0x47]);
+    }
+    expect(manifest.icons.map((icon) => icon.sizes)).toEqual(expect.arrayContaining(['192x192', '512x512']));
+
+    const touch = await handleRequest(new Request('https://drop.test/apple-touch-icon.png'), env);
+    expect(touch.headers.get('content-type')).toBe('image/png');
+
+    const login = await (await handleRequest(new Request('https://drop.test/login'), env)).text();
+    expect(login).toContain('<link rel="manifest" href="/manifest.webmanifest"');
+    expect(login).toContain('<link rel="apple-touch-icon" href="/apple-touch-icon.png"');
+
+    const notFound = await (await handleRequest(new Request('https://drop.test/missing/page'), env)).text();
+    expect(notFound).not.toContain('rel="manifest"');
+  });
+
   it('refuses uploads to paths the Worker answers itself', async () => {
     const env = createEnv();
     const form = new FormData();

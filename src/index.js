@@ -8,6 +8,7 @@ import { dirname, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleF
 import { publish, publishEntries, reservedPathProblem } from './publish.js';
 import { renderAdminPage, renderDirectoryPage, renderLoginPage, renderNotFoundPage } from './templates.js';
 import { createFolder, deletePath, getObject, listDirectory, maybeGetFolderIndex, searchPaths } from './storage.js';
+import { APP_ICONS, MANIFEST, MANIFEST_PATH } from './webapp.js';
 
 export default {
   async fetch(request, env, ctx) {
@@ -41,6 +42,14 @@ export async function handleRequest(request, env, ctx = NO_CONTEXT) {
 
     if (pathname === '/favicon.ico') {
       return new Response(FAVICON_PNG, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
+    }
+
+    if (pathname === MANIFEST_PATH) {
+      return new Response(MANIFEST, { headers: { 'content-type': 'application/manifest+json', 'cache-control': 'public, max-age=3600' } });
+    }
+
+    if (Object.hasOwn(APP_ICONS, pathname)) {
+      return new Response(APP_ICONS[pathname], { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
     }
 
     if (isPreviewPath(pathname)) {

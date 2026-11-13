@@ -5,7 +5,10 @@ import { collectConflicts, eachLimited, putObject } from './storage.js';
 
 // Paths the Worker answers itself, so a file stored there could never be
 // opened. Compared against the first segment (or exact path).
-const RESERVED = ['admin', 'login', 'logout', 'api', 'mcp', 'oauth', '__health', '__og', 'favicon.ico', 'favicon.svg'];
+const RESERVED = [
+  'admin', 'login', 'logout', 'api', 'mcp', 'oauth', '__health', '__og', 'favicon.ico', 'favicon.svg',
+  'manifest.webmanifest', 'app-icon-192.png', 'app-icon-512.png', 'app-icon-maskable.png', 'apple-touch-icon.png',
+];
 
 export function reservedPathProblem(key) {
   const first = key.split('/')[0];
