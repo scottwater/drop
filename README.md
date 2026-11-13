@@ -12,6 +12,7 @@ Drop is a Cloudflare-first personal publishing utility for uploading files and f
 - CLI for upload, list, search, folder creation, and deletion
 - MCP server at `/mcp` so AI apps can list, read, write, and delete files
 - R2-backed storage with overwrite protection
+- Link previews: published HTML pages (including rendered Markdown) get `og:image` and `twitter:card` tags pointing at `/__og/<path>`, a 1200×630 screenshot of the page's first screen taken with Cloudflare Browser Rendering (the `BROWSER` binding) and cached per page version. Pages that set their own `og:image` are left alone. Remove the binding to turn previews off. `/__og` is reserved.
 
 See [CLI.md](./CLI.md) for local CLI installation, authentication, and command usage.
 

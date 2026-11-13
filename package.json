@@ -16,6 +16,7 @@
     "cli": "node ./src/cli.js"
   },
   "dependencies": {
+    "@cloudflare/puppeteer": "1.4.0",
     "@cloudflare/workers-oauth-provider": "1.2.3",
     "@modelcontextprotocol/server": "2.3.1",
     "marked": "^16.4.1",

@@ -3,6 +3,7 @@ import { inferContentType } from './content-type.js';
 import { FAVICON_PNG, FAVICON_SVG } from './favicon.js';
 import { listConnections, revokeConnection } from './oauth/connections.js';
 import { isOAuthPath, oauthRoute } from './oauth/routes.js';
+import { isPreviewPath, servePreviewImage, withPreviewTags } from './og.js';
 import { dirname, joinPaths, normalizePath, resolveDirectoryBase, resolveSingleFileDestination } from './path.js';
 import { publish, publishEntries, reservedPathProblem } from './publish.js';
 import { renderAdminPage, renderDirectoryPage, renderLoginPage, renderNotFoundPage } from './templates.js';
@@ -40,6 +41,10 @@ export async function handleRequest(request, env, ctx = NO_CONTEXT) {
 
     if (pathname === '/favicon.ico') {
       return new Response(FAVICON_PNG, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
+    }
+
+    if (isPreviewPath(pathname)) {
+      return await servePreviewImage(request, env, ctx);
     }
 
     if (pathname === '/login' && request.method === 'GET') {
@@ -114,7 +119,7 @@ export async function handleRequest(request, env, ctx = NO_CONTEXT) {
       return json({ ok: true });
     }
 
-    return servePublicPath(request, env);
+    return await servePublicPath(request, env);
   } catch (error) {
     if (error instanceof Response) {
       return error;
@@ -175,7 +180,7 @@ async function servePublicPath(request, env) {
   if (requestedPath) {
     const object = await getObject(env.DROP_BUCKET, requestedPath, conditional);
     if (object) {
-      return objectResponse(object, requestedPath, request);
+      return withPreviewTags(objectResponse(object, requestedPath, request), { env, key: requestedPath, object, url });
     }
   }
 
@@ -185,7 +190,8 @@ async function servePublicPath(request, env) {
 
   const index = await maybeGetFolderIndex(env.DROP_BUCKET, requestedPath, needsSlash ? undefined : conditional);
   if (index) {
-    return needsSlash ? folderRedirect(url) : objectResponse(index.object, index.key, request);
+    if (needsSlash) return folderRedirect(url);
+    return withPreviewTags(objectResponse(index.object, index.key, request), { env, key: index.key, object: index.object, url });
   }
 
   if (requestedPath === '') {

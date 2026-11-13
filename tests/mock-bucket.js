@@ -25,6 +25,8 @@ export class MockBucket {
       size: object.size,
       uploaded: object.uploaded,
       httpMetadata: object.httpMetadata,
+      etag: object.etag,
+      httpEtag: `"${object.etag}"`,
     };
   }
 
@@ -36,6 +38,7 @@ export class MockBucket {
     const httpEtag = `"${object.etag}"`;
     const base = {
       key: object.key,
+      etag: object.etag,
       size: object.size,
       uploaded: object.uploaded,
       httpMetadata: object.httpMetadata,

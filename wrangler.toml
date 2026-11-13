@@ -3,7 +3,8 @@ main = "src/index.js"
 compatibility_date = "2026-03-15"
 # OAuth client metadata documents (CIMD) are fetched from client URLs; never let
 # those fetches reach private or same-zone addresses.
-compatibility_flags = ["global_fetch_strictly_public"]
+# nodejs_compat is for @cloudflare/puppeteer, which takes link-preview screenshots.
+compatibility_flags = ["global_fetch_strictly_public", "nodejs_compat"]
 workers_dev = true
 
 # The route and bucket live here so every deploy path, including Cloudflare's
@@ -45,3 +46,8 @@ APP_NAME = "Drop"
 # the namespace on first deploy. Without this binding, /mcp and /oauth/* 404.
 [[kv_namespaces]]
 binding = "OAUTH_KV"
+
+# Cloudflare Browser Rendering, for link-preview screenshots of published HTML
+# pages (/__og/<path>). Remove it to serve pages without og:image tags.
+[browser]
+binding = "BROWSER"
